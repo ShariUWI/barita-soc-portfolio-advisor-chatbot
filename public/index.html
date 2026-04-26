@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -120,9 +121,9 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
         Dashboard
       </button>
-      <button class="nav-item" data-view="questionnaire" onclick="switchView('questionnaire')">
+      <button class="nav-item" data-view="questionnaire" onclick="window.location.href='/questionnaire'">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-        Questionnaire
+        🐻 Questionnaire
       </button>
       <button class="nav-item" data-view="portfolio" onclick="switchView('portfolio')">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
@@ -177,35 +178,7 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════
-     QUESTIONNAIRE MODAL
-═══════════════════════════════════════════════ -->
-<div id="modal-questionnaire" class="modal-overlay hidden">
-  <div class="modal-q">
-    <button class="modal-close" id="btn-close-q">✕</button>
-    <div class="modal-q-inner">
-      <h2 class="modal-q-title">Investment Risk Profiling Questionnaire</h2>
-      <p class="modal-q-sub">Understanding your risk profile will help us make investment recommendations that are suitable for you.</p>
-
-      <!-- Progress -->
-      <div class="q-progress-wrap">
-        <div class="q-progress-track">
-          <div class="q-progress-fill" id="q-progress-fill"></div>
-        </div>
-        <span class="q-progress-pct" id="q-progress-pct">0%</span>
-      </div>
-
-      <!-- Question body -->
-      <div id="q-body"></div>
-
-      <!-- Nav -->
-      <div class="q-nav-row">
-        <button class="q-btn-back" id="q-btn-back">← Back</button>
-        <button class="q-btn-next" id="q-btn-next">Next →</button>
-      </div>
-    </div>
-  </div>
-</div>
+<!-- Questionnaire now lives at /questionnaire (bear chatbot) -->
 
 <script type="module" src="app.js"></script>
 </body>

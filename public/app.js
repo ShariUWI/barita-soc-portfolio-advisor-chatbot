@@ -3,7 +3,7 @@
    Firebase Auth + Firestore + Flask backend
 ═══════════════════════════════════════════════ */
 
-// ─── FIREBASE CONFIG — replace with yours ─────────────────────────────────────
+// ─── FIREBASE CONFIG ─────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCYCE51wwDyxJ93Md7-SB3Vu0MouAkmupE",
   authDomain: "barita-soc-team-c.firebaseapp.com",
@@ -14,7 +14,7 @@ const FIREBASE_CONFIG = {
   measurementId: "G-D4E0HQSSFS"
 };
 
-// ─── BACKEND URL — Shar remember to replace with your Render/Railway URL after deploying ───────
+// ─── BACKEND URL — Shar remember to replace with the Render/Railway URL after deploying ───────
 // For local testing: const BACKEND_URL = "http://localhost:5000";
 const BACKEND_URL = "http://localhost:5000";
 
@@ -229,7 +229,7 @@ const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 function switchView(view) {
   state.currentView = view;
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const titles = { dashboard: 'Dashboard', questionnaire: 'Questionnaire', portfolio: 'My Portfolio', advisor: 'AI Advisor', reports: 'Reports' };
+  const titles = { dashboard: 'Dashboard', questionnaire: 'Questionnaire', portfolio: 'My Portfolio', advisor: '🐻 Barita', reports: 'Reports' };
   $('topbar-title').textContent = titles[view] || view;
   renderView(view);
 }
@@ -536,172 +536,595 @@ function renderPortfolioView(area) {
   }
 
   const { profile, profile_label, allocations, metrics, risk_breakdown } = state.report;
+  const name = state.user?.displayName?.split(' ')[0] || 'Investor';
+
+  // Simplified explanations for metrics
+  const metaExplain = {
+    expected_return: 'This is the average annual growth we expect your money to make. For example, if you invest $100,000 and the expected return is 8%, you could expect roughly $8,000 in growth per year.',
+    volatility: 'This measures how much your portfolio value might go up or down on any given year. A lower number means a smoother ride; a higher number means bigger swings — but also bigger potential gains.',
+    sharpe_ratio: 'This tells you how much reward you are getting for the risk you are taking. A higher number is better. Above 1.0 is considered good — it means the returns are worth the risk.'
+  };
+
+  // Risk-o-meter level
+  const riskLevels = { conservative: 1, moderate: 2, aggressive: 3 };
+  const riskLevel = riskLevels[profile?.toLowerCase()] || 2;
+  const riskColors = { conservative: '#10B981', moderate: '#F59E0B', aggressive: '#EF4444' };
+  const riskColor = riskColors[profile?.toLowerCase()] || '#F59E0B';
+  const riskDescriptions = {
+    conservative: 'You prefer safety and stability. Your portfolio focuses on protecting what you have while earning steady, predictable returns. Think of it like keeping your money in a very well-managed savings plan.',
+    moderate: 'You are comfortable with some ups and downs in exchange for better long-term growth. Your portfolio balances safety and growth - like a mix of a savings account and stocks.',
+    aggressive: 'You are focused on maximum long-term growth and can handle short-term drops without panic. Your portfolio takes more risk for the chance of higher rewards over time.'
+  };
+
+  // Simplified asset category descriptions
+  const categoryDescriptions = {
+    'Cash':         '💵 Think of this like a high-interest savings account. Very safe, easy to access, but lower returns.',
+    'Fixed Income': '🏛️ These are loans you give to governments or companies. They pay you regular interest - like a steady paycheck from your investment.',
+    'Equity':       '📈 These are small ownership stakes in companies. They can grow a lot over time but may drop in the short term.',
+    'Real Estate':  '🏠 Investing in property through a fund. Earns rental-style income and tends to protect against inflation.',
+    'Alternatives': '🎯 Non-traditional investments like hedge funds or private assets that behave differently from stocks and bonds — great for diversification.'
+  };
+
+  // Build superclass grouping
+  const superGroups = {};
+  allocations.forEach(a => {
+    const sc = a.superClass || a.asset_class || a['class'] || 'Other';
+    if (!superGroups[sc]) superGroups[sc] = { total: 0, items: [] };
+    superGroups[sc].total += parseFloat(a.pct) || 0;
+    superGroups[sc].items.push(a);
+  });
+
+  const chartColors = ['#0BB8A9','#3B82F6','#F59E0B','#10B981','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#6366F1','#14B8A6'];
+
   area.innerHTML = `
-    <div class="port-header">
-      <div class="port-header-left">
-        <h3>Your Portfolio <span class="profile-badge ${profile.toLowerCase()}" style="margin-left:10px">${profile}</span></h3>
-        <p>${profile_label || ''}</p>
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px">
+          ${esc(name)}'s Investment Portfolio
+          <span class="profile-badge ${profile.toLowerCase()}" style="margin-left:10px;font-size:13px">${esc(profile)}</span>
+        </h2>
+        <p style="font-size:13px;color:var(--text-muted)">${esc(profile_label || 'Personalised portfolio based on your risk profile')}</p>
       </div>
-      <button class="btn-dl" id="btn-dl-main">⬇ Download PDF Report</button>
+      <button class="btn-dl" id="btn-dl-main" style="padding:10px 22px;font-size:13px">⬇ Download Full Report</button>
     </div>
 
-    <!-- Metrics row -->
-    <div class="stat-grid" style="margin-bottom:20px">
-      <div class="stat-card"><div class="stat-card-label">Expected Return</div><div class="stat-card-val" style="color:var(--green)">${metrics.expected_return}</div></div>
-      <div class="stat-card"><div class="stat-card-label">Volatility</div><div class="stat-card-val" style="color:var(--red)">${metrics.volatility}</div></div>
-      <div class="stat-card"><div class="stat-card-label">Sharpe Ratio</div><div class="stat-card-val" style="color:var(--teal)">${metrics.sharpe_ratio}</div></div>
-      <div class="stat-card"><div class="stat-card-label">Asset Classes</div><div class="stat-card-val">${allocations.length}</div></div>
-    </div>
-
-    <div class="two-col">
-      <!-- Allocation table -->
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">Asset Allocation</div><div class="panel-sub">SOC universe instruments</div></div>
-        <div class="panel-body"><div id="alloc-table-full"></div></div>
-      </div>
-
-      <!-- Risk breakdown -->
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">Risk Class Breakdown</div></div>
-        <div class="panel-body" id="risk-breakdown-panel"></div>
-      </div>
-    </div>
-
-    <!-- Financial info table — matches Figma -->
-    <div class="panel" style="margin-top:0">
+    <!-- SECTION 1: What This Means For You -->
+    <div class="panel" style="margin-bottom:20px;border-left:4px solid ${riskColor}">
       <div class="panel-header">
-        <div><div class="panel-title">Financial Information</div><div class="panel-sub">Based on your questionnaire inputs</div></div>
+        <div><div class="panel-title">🙋 What Does This Mean For You?</div><div class="panel-sub">Plain English explanation of your portfolio</div></div>
       </div>
+      <div class="panel-body">
+        <p style="font-size:15px;line-height:1.75;color:var(--text)">${riskDescriptions[profile?.toLowerCase()] || ''}</p>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Risk-O-Meter + Key Stats -->
+    <div class="two-col" style="margin-bottom:20px">
+
+      <!-- Risk-O-Meter -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">⚡ Your Risk Level</div></div>
+        <div class="panel-body" style="text-align:center">
+          <div style="position:relative;margin:0 auto 16px;width:200px;height:110px;overflow:hidden">
+            <canvas id="risk-gauge" width="200" height="110"></canvas>
+          </div>
+          <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:${riskColor};margin-bottom:6px">${esc(profile)}</div>
+          <div style="font-size:13px;color:var(--text-muted);line-height:1.6">
+            ${riskLevel === 1 ? 'Low risk · Steady &amp; stable' : riskLevel === 2 ? 'Medium risk · Balanced growth' : 'Higher risk · Maximum growth potential'}
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">CONSERVATIVE</div><div style="width:12px;height:12px;border-radius:50%;background:#10B981;margin:0 auto"></div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">MODERATE</div><div style="width:12px;height:12px;border-radius:50%;background:#F59E0B;margin:0 auto"></div></div>
+            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">AGGRESSIVE</div><div style="width:12px;height:12px;border-radius:50%;background:#EF4444;margin:0 auto"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Metrics with tooltips -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">📊 Key Numbers</div><div class="panel-sub">Hover each metric to learn what it means</div></div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:0">
+          ${[
+            { key: 'expected_return', label: 'Expected Annual Return', val: metrics.expected_return, color: 'var(--green)', icon: '📈' },
+            { key: 'volatility',      label: 'Volatility (Risk Level)', val: metrics.volatility,      color: 'var(--red)',   icon: '〰️' },
+            { key: 'sharpe_ratio',    label: 'Sharpe Ratio',            val: metrics.sharpe_ratio,    color: 'var(--teal)',  icon: '⚖️' },
+          ].map((m, i) => `
+            <div class="metric-tooltip-wrap" style="padding:14px 0;${i < 2 ? 'border-bottom:1px solid var(--border);' : ''}position:relative;cursor:help"
+                 onmouseenter="this.querySelector('.metric-tip').style.display='block'"
+                 onmouseleave="this.querySelector('.metric-tip').style.display='none'">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:20px">${m.icon}</span>
+                <div style="flex:1">
+                  <div style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em">${m.label} <span style="color:var(--teal-border);font-size:11px">ⓘ</span></div>
+                  <div style="font-family:var(--font-display);font-size:26px;font-weight:700;color:${m.color}">${esc(m.val || '—')}</div>
+                </div>
+              </div>
+              <div class="metric-tip" style="display:none;position:absolute;left:0;right:0;bottom:calc(100% + 4px);background:var(--navy);color:white;border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.6;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
+                ${metaExplain[m.key]}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 3: Donut Chart + Asset Breakdown -->
+    <div class="two-col" style="margin-bottom:20px">
+
+      <!-- Donut chart -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">🍩 Where Is My Money Going?</div><div class="panel-sub">Visual breakdown of your allocation</div></div>
+        <div class="panel-body" style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+          <canvas id="alloc-donut" width="180" height="180" style="flex-shrink:0"></canvas>
+          <div id="donut-legend" style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+
+      <!-- Asset category explanations -->
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">📚 Asset Types Explained</div><div class="panel-sub">What each category actually is</div></div>
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:12px">
+          ${Object.entries(categoryDescriptions).map(([cat, desc]) => {
+            const inPortfolio = allocations.some(a => (a.superClass || a.asset_class || a['class'] || '') === cat || (a.superClass || a.asset_class || a['class'] || '').includes(cat));
+            return `<div style="padding:12px 14px;border-radius:8px;background:${inPortfolio ? 'var(--teal-glow)' : 'var(--surface-2)'};border:1px solid ${inPortfolio ? 'var(--teal-border)' : 'var(--border)'}">
+              <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${cat} ${inPortfolio ? '<span style="font-size:11px;color:var(--teal);font-weight:700">✓ IN YOUR PORTFOLIO</span>' : ''}</div>
+              <div style="font-size:13px;color:var(--text-muted);line-height:1.6">${desc}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 4: Full allocation bar chart -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header"><div class="panel-title">📋 Your Full Allocation</div><div class="panel-sub">Each asset in plain English</div></div>
+      <div class="panel-body">
+        <canvas id="alloc-bar-chart" height="80" style="margin-bottom:20px"></canvas>
+        <div id="alloc-cards" style="display:flex;flex-direction:column;gap:10px"></div>
+      </div>
+    </div>
+
+    <!-- SECTION 5: Growth Projection -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header">
+        <div><div class="panel-title">📈 How Could Your Money Grow?</div><div class="panel-sub">Hypothetical 10-year projection based on your portfolio's expected return</div></div>
+      </div>
+      <div class="panel-body">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.65">
+          This chart shows what could happen to <strong>$100,000</strong> invested in your portfolio over 10 years.
+          The middle line is the expected outcome. The shaded area shows the range of realistic outcomes based on your portfolio's volatility.
+          <em>This is illustrative only — actual returns will vary.</em>
+        </p>
+        <canvas id="growth-chart" height="70"></canvas>
+      </div>
+    </div>
+
+    <!-- SECTION 6: Your Profile Summary -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header"><div class="panel-title">👤 Your Investment Profile Summary</div><div class="panel-sub">Key facts used to build your portfolio</div></div>
       <div class="panel-body" style="padding:0">
         <table class="fi-table">
-          <thead><tr><th>Category</th><th>Detail</th><th>Your Answer</th></tr></thead>
+          <thead><tr><th>What We Looked At</th><th>Your Answer</th><th>What It Means</th></tr></thead>
           <tbody>
-            <tr><td>Investment Goal(s)</td><td></td><td>${esc((state.answers.objectives || []).join(', ') || '—')}</td></tr>
-            <tr><td>Investment Horizon</td><td></td><td>${esc(state.answers.withdrawal_time || '—')}</td></tr>
-            <tr><td>Investable Amount</td><td></td><td>${state.answers.investable_amount ? 'JMD ' + esc(state.answers.investable_amount) : '—'}</td></tr>
-            <tr><td>Income Stability</td><td></td><td>${esc(state.answers.income_stability || '—')}</td></tr>
-            <tr><td>Emergency Fund</td><td></td><td>${esc(state.answers.emergency_fund || '—')}</td></tr>
-            <tr><td>Liquidity Need</td><td></td><td>${esc(state.answers.liquid_pct || '—')}</td></tr>
-            <tr><td>Primary Currency</td><td></td><td>${esc(state.answers.primary_currency || '—')}</td></tr>
+            <tr><td>Primary Goal</td><td>${esc(state.answers.primary_goal || '—')}</td><td style="font-size:12px;color:var(--text-muted)">The main thing you want your money to do for you</td></tr>
+            <tr><td>Investment Horizon</td><td>${esc(state.answers.withdrawal_time || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How soon you might need this money back</td></tr>
+            <tr><td>Risk Reaction</td><td>${esc(state.answers.drop_reaction || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How you would respond if markets dropped</td></tr>
+            <tr><td>Max Loss Tolerance</td><td>${esc(state.answers.max_loss || '—')}</td><td style="font-size:12px;color:var(--text-muted)">The biggest loss you could handle without changing strategy</td></tr>
+            <tr><td>Debt Situation</td><td>${esc(state.answers.debt_situation || '—')}</td><td style="font-size:12px;color:var(--text-muted)">Your current debt affects how much risk is appropriate</td></tr>
+            <tr><td>Income Runway</td><td>${esc(state.answers.income_loss_runway || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How long you could survive financially without your income</td></tr>
+            <tr><td>Primary Currency</td><td>${esc(state.answers.earn_currency || '—')}</td><td style="font-size:12px;color:var(--text-muted)">Affects which instruments suit you best</td></tr>
           </tbody>
         </table>
       </div>
     </div>
-  `;
 
-  // Allocation table
-  const allocEl = $('alloc-table-full');
-  allocations.forEach(a => {
-    const row = el('div', 'alloc-row-item');
-    row.innerHTML = `
-      <div class="alloc-dot" style="background:${a.color || '#0BB8A9'}"></div>
-      <div style="flex:1"><div class="alloc-name">${esc(a.label)}</div><div class="alloc-ticker">${esc(a.ticker)}</div></div>
-      <div class="alloc-bar-outer"><div class="alloc-bar-inner" style="background:${a.color || '#0BB8A9'}" data-pct="${a.pct}"></div></div>
-      <div class="alloc-pct">${a.pct}%</div>
-    `;
-    allocEl.appendChild(row);
-  });
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.querySelectorAll('.alloc-bar-inner').forEach(b => { b.style.width = b.dataset.pct + '%'; });
-  }));
-
-  // Risk breakdown
-  const rbEl = $('risk-breakdown-panel');
-  if (risk_breakdown) {
-    Object.entries(risk_breakdown).forEach(([label, d]) => {
-      const box = el('div', 'alloc-row-item');
-      box.innerHTML = `
-        <div class="alloc-dot" style="background:${d.color}"></div>
-        <div style="flex:1;font-size:13px;font-weight:500">${esc(label)}</div>
-        <div style="font-family:var(--font-display);font-size:18px;font-weight:700;color:${d.color}">${d.pct}%</div>
-      `;
-      rbEl.appendChild(box);
-    });
-  }
-
-  $('btn-dl-main').addEventListener('click', () => downloadPDF('latest'));
-}
-
-// ── AI ADVISOR VIEW ──
-function renderAdvisorView(area) {
-  area.innerHTML = `
-    <div class="panel" style="max-width:760px">
-      <div class="panel-header">
-        <div><div class="panel-title">AI Portfolio Advisor</div><div class="panel-sub">Powered by ChatGPT — ask anything about your portfolio</div></div>
-        ${state.report ? `<span class="profile-badge ${state.report.profile.toLowerCase()}">${state.report.profile}</span>` : ''}
-      </div>
+    <!-- SECTION 7: Key Risks -->
+    <div class="panel" style="margin-bottom:20px">
+      <div class="panel-header"><div class="panel-title">⚠️ Things To Keep In Mind</div><div class="panel-sub">Honest risks every investor should know about</div></div>
       <div class="panel-body">
-        <div class="advisor-wrap" id="advisor-wrap"></div>
-        <div class="chat-input-row">
-          <input class="chat-input" id="chat-input" type="text" placeholder="Ask about your portfolio, investment strategy, risks…" />
-          <button class="chat-send" id="chat-send">Send →</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          ${[
+            { icon: '📉', title: 'Market ups and downs', desc: 'All investments can lose value in the short term. This is normal and expected — the key is staying patient.' },
+            { icon: '💱', title: 'Currency risk', desc: 'Some assets in your portfolio are in USD. If the JMD strengthens, those returns could look smaller in local currency.' },
+            { icon: '🏦', title: 'Interest rate changes', desc: 'When interest rates rise, bond (fixed income) prices typically fall. This affects the fixed income portion of your portfolio.' },
+            { icon: '⏳', title: 'Time horizon matters', desc: 'This portfolio is built for your stated time horizon. Withdrawing early could lock in losses at the wrong time.' },
+          ].map(r => `
+            <div style="padding:14px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,158,11,0.2)">
+              <div style="font-size:20px;margin-bottom:8px">${r.icon}</div>
+              <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">${r.title}</div>
+              <div style="font-size:12px;color:var(--text-muted);line-height:1.6">${r.desc}</div>
+            </div>
+          `).join('')}
         </div>
       </div>
     </div>
   `;
 
-  // Render existing messages
-  const wrap = $('advisor-wrap');
-  if (state.chatHistory.length === 0) {
-    const greeting = state.report
-      ? `Hello! I've reviewed your portfolio. You've been classified as a **${state.report.profile}** investor. What would you like to know about your recommended allocation?`
-      : "Hello! I'm your Barita AI Advisor. Complete the questionnaire first and I can explain your portfolio recommendation in detail.";
-    state.chatHistory.push({ role: 'advisor', text: greeting });
+  // ── Draw Risk Gauge ──
+  const gaugeCanvas = document.getElementById('risk-gauge');
+  if (gaugeCanvas) {
+    const ctx = gaugeCanvas.getContext('2d');
+    const cx = 100, cy = 100, r = 80;
+    // Background arc
+    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.lineWidth = 18;
+    const grad = ctx.createLinearGradient(20, 0, 180, 0);
+    grad.addColorStop(0, '#10B981'); grad.addColorStop(0.5, '#F59E0B'); grad.addColorStop(1, '#EF4444');
+    ctx.strokeStyle = grad; ctx.stroke();
+    // Needle
+    const angle = Math.PI + ((riskLevel - 1) / 2) * Math.PI;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + (r - 10) * Math.cos(angle), cy + (r - 10) * Math.sin(angle));
+    ctx.lineWidth = 3; ctx.strokeStyle = '#1A2342'; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#1A2342'; ctx.fill();
   }
-  state.chatHistory.forEach(m => appendMessage(m));
 
-  $('chat-send').addEventListener('click', sendMessage);
-  $('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+  // ── Draw Donut Chart ──
+  const donutCanvas = document.getElementById('alloc-donut');
+  if (donutCanvas && typeof Chart !== 'undefined') {
+    new Chart(donutCanvas.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: allocations.map(a => a.ticker || a.label),
+        datasets: [{ data: allocations.map(a => parseFloat(a.pct) || 0), backgroundColor: chartColors, borderWidth: 0, hoverOffset: 4 }]
+      },
+      options: { responsive: false, cutout: '65%', plugins: { legend: { display: false } } }
+    });
+    const legend = document.getElementById('donut-legend');
+    allocations.forEach((a, i) => {
+      const item = document.createElement('div');
+      item.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px';
+      item.innerHTML = `<div style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${chartColors[i % chartColors.length]}"></div>
+        <span style="color:var(--text-muted);flex:1">${esc(a.label || a.ticker)}</span>
+        <span style="font-weight:700;color:var(--text)">${a.pct}%</span>`;
+      legend.appendChild(item);
+    });
+  }
+
+  // ── Draw Bar Chart ──
+  const barCanvas = document.getElementById('alloc-bar-chart');
+  if (barCanvas && typeof Chart !== 'undefined') {
+    new Chart(barCanvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: allocations.map(a => a.ticker || a.label),
+        datasets: [{ data: allocations.map(a => parseFloat(a.pct) || 0), backgroundColor: chartColors, borderWidth: 0, borderRadius: 6 }]
+      },
+      options: {
+        responsive: true, indexAxis: 'x',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => v + '%' } }
+        }
+      }
+    });
+  }
+
+  // ── Allocation Cards ──
+  const cardsEl = document.getElementById('alloc-cards');
+  const assetPlainEnglish = {
+    'Cash':         'Safe cash reserve — earns steady interest, always accessible.',
+    'Fixed Income': 'Earns regular interest payments from governments or companies. Lower risk than stocks.',
+    'Equity':       'Ownership in companies. Higher growth potential over time, but can be volatile short-term.',
+    'Real Estate':  'Property investment through a fund. Earns income and grows with the property market.',
+    'Alternatives': 'Non-traditional investments designed to diversify and reduce overall portfolio risk.',
+    'Fund':         'A managed basket of multiple assets for built-in diversification.'
+  };
+  allocations.forEach((a, i) => {
+    const sc = a.superClass || a.asset_class || a['class'] || 'Other';
+    const plainEng = assetPlainEnglish[sc] || Object.entries(assetPlainEnglish).find(([k]) => sc.includes(k))?.[1] || 'A diversified investment instrument.';
+    const card = document.createElement('div');
+    card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)';
+    card.innerHTML = `
+      <div style="width:10px;height:40px;border-radius:5px;flex-shrink:0;background:${chartColors[i % chartColors.length]}"></div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+          <span style="font-weight:700;font-size:14px;color:var(--text)">${esc(a.label || a.ticker)}</span>
+          <span style="font-size:11px;color:var(--text-faint);background:var(--border);padding:1px 7px;border-radius:10px">${esc(a.ticker || '')}</span>
+          <span style="font-size:11px;color:var(--text-faint)">${esc(sc)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.5">${plainEng}${a.rationale ? ' ' + esc(a.rationale) : ''}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--font-display);font-size:20px;font-weight:700;color:${chartColors[i % chartColors.length]}">${a.pct}%</div>
+        <div style="font-size:11px;color:var(--text-faint)">of portfolio</div>
+      </div>
+    `;
+    cardsEl.appendChild(card);
+  });
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.querySelectorAll('.alloc-bar-inner').forEach(b => { b.style.width = b.dataset.pct + '%'; });
+  }));
+
+  // ── Growth Projection Chart ──
+  const growthCanvas = document.getElementById('growth-chart');
+  if (growthCanvas && typeof Chart !== 'undefined') {
+    const retStr  = metrics.expected_return || '8%';
+    const volStr  = metrics.volatility      || '10%';
+    const ret = parseFloat(retStr) / 100 || 0.08;
+    const vol = parseFloat(volStr) / 100 || 0.10;
+    const years = [0,1,2,3,4,5,6,7,8,9,10];
+    const base   = years.map(y => Math.round(100000 * Math.pow(1 + ret, y)));
+    const upper  = years.map(y => Math.round(100000 * Math.pow(1 + ret + vol * 0.5, y)));
+    const lower  = years.map(y => Math.round(100000 * Math.pow(1 + ret - vol * 0.5, y)));
+    new Chart(growthCanvas.getContext('2d'), {
+      type: 'line',
+      data: {
+        labels: years.map(y => 'Year ' + y),
+        datasets: [
+          { label: 'Optimistic', data: upper, borderColor: 'rgba(16,185,129,0.3)', backgroundColor: 'rgba(16,185,129,0.06)', borderDash: [4,4], fill: false, pointRadius: 0, tension: 0.4 },
+          { label: 'Expected',   data: base,  borderColor: '#0BB8A9', backgroundColor: 'rgba(11,184,169,0.08)', fill: '-1', pointRadius: 3, tension: 0.4, borderWidth: 2.5 },
+          { label: 'Conservative', data: lower, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.06)', borderDash: [4,4], fill: false, pointRadius: 0, tension: 0.4 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 20 } },
+          tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toLocaleString() } } },
+        scales: {
+          x: { grid: { display: false } },
+          y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'K' } }
+        }
+      }
+    });
+  }
+
+  document.getElementById('btn-dl-main')?.addEventListener('click', () => downloadPDF('latest'));
 }
 
-function appendMessage(msg) {
-  const wrap = $('advisor-wrap');
-  if (!wrap) return;
-  const row = el('div', `msg-row${msg.role === 'user' ? ' is-user' : ''}`);
-  row.innerHTML = `
-    <div class="msg-avatar ${msg.role === 'advisor' ? 'ai' : 'user-av'}">${msg.role === 'advisor' ? 'B' : '👤'}</div>
-    <div class="msg-bubble">
-      ${msg.thinking
-        ? '<div class="thinking"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>'
-        : `<div style="white-space:pre-wrap">${esc(msg.text)}</div>`}
+// ── AI ADVISOR VIEW ──
+// ── BEAR ADVISOR VIEW ──
+// Replaces the old plain-text AI Advisor with the full Barita bear chat experience
+function renderAdvisorView(area) {
+  const profile  = state.report?.behavioral_profile || state.report?.profile;
+  const hasReport= !!(state.report && state.report.allocations);
+
+  area.innerHTML = `
+    <style>
+      /* Bear advisor styles scoped to this view */
+      .bear-chat-wrap { max-width: 760px; display: flex; flex-direction: column; height: calc(100vh - 180px); min-height: 500px; }
+      .bear-chat-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; background:var(--surface); border:1px solid var(--border); border-radius:16px 16px 0 0; box-shadow:0 1px 0 var(--border); }
+      .bear-chat-header-left { display:flex; align-items:center; gap:12px; }
+      .bear-avatar-lg { width:46px; height:46px; border-radius:50%; background:#FDF6EC; border:2px solid #FEF3C7; display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:0 2px 8px rgba(245,158,11,0.2); flex-shrink:0; }
+      .bear-chat-name { font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:700; color:var(--text); }
+      .bear-chat-sub  { font-size:12px; color:var(--text-muted); margin-top:2px; }
+      .bear-online    { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--green); }
+      .bear-online-dot{ width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
+      @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+      .bear-messages { flex:1; overflow-y:auto; padding:20px 22px; display:flex; flex-direction:column; gap:14px; background:var(--surface-2); border-left:1px solid var(--border); border-right:1px solid var(--border); }
+      .bear-messages::-webkit-scrollbar { width:4px; }
+      .bear-messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+      .bmsg-bear { display:flex; align-items:flex-start; gap:10px; animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1) both; }
+      .bmsg-user { display:flex; justify-content:flex-end; animation:msgIn 0.3s ease both; }
+      @keyframes msgIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+      .bmsg-bear-av { width:34px; height:34px; border-radius:50%; background:#FDF6EC; border:1.5px solid #FEF3C7; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+      .bmsg-bear-bubble { background:var(--surface); border:1.5px solid var(--border); border-radius:18px 18px 18px 4px; padding:12px 16px; max-width:78%; font-size:14px; line-height:1.7; color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+      .bmsg-bear-bubble strong { color:var(--teal); }
+      .bmsg-user-bubble { background:var(--teal); color:white; border-radius:18px 18px 4px 18px; padding:11px 16px; max-width:72%; font-size:14px; line-height:1.65; box-shadow:0 4px 12px rgba(11,184,169,0.25); }
+
+      .bear-options { display:flex; flex-direction:column; gap:7px; margin-left:44px; margin-top:4px; animation:msgIn 0.35s 0.05s ease both; }
+      .bear-opt-btn { background:var(--surface); border:1.5px solid var(--border); border-radius:10px; padding:9px 16px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; color:var(--text); cursor:pointer; text-align:left; transition:all 0.18s; display:flex; align-items:center; gap:8px; }
+      .bear-opt-btn:hover { border-color:var(--teal); background:var(--teal-glow,#E8FAF8); color:var(--teal); transform:translateX(3px); }
+      .bear-opt-btn.selected { border-color:var(--teal); background:var(--teal-glow,#E8FAF8); color:var(--teal); font-weight:600; }
+      .opt-check { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:9px; flex-shrink:0; transition:all 0.15s; }
+      .bear-opt-btn.selected .opt-check { background:var(--teal); border-color:var(--teal); color:white; }
+
+      .bear-typing { display:flex; gap:4px; align-items:center; padding:4px 0; }
+      .bear-typing-dot { width:6px; height:6px; background:var(--text-faint,#A0ABBE); border-radius:50%; animation:typeBounce 1.3s infinite ease-in-out; }
+      .bear-typing-dot:nth-child(2){animation-delay:0.22s}
+      .bear-typing-dot:nth-child(3){animation-delay:0.44s}
+      @keyframes typeBounce{ 0%,80%,100%{transform:scale(0.4);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+
+      .bear-input-row { display:flex; gap:10px; padding:14px 18px; background:var(--surface); border:1px solid var(--border); border-top:none; border-radius:0 0 16px 16px; }
+      .bear-text-input { flex:1; background:var(--surface-2,#F7F9FC); border:1.5px solid var(--border); border-radius:24px; padding:11px 18px; font-family:'DM Sans',sans-serif; font-size:14px; color:var(--text); outline:none; transition:border-color 0.2s; resize:none; min-height:44px; max-height:100px; line-height:1.5; }
+      .bear-text-input:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(11,184,169,0.1); }
+      .bear-text-input::placeholder { color:var(--text-faint,#A0ABBE); }
+      .bear-send-btn { width:44px; height:44px; background:var(--teal); border:none; border-radius:50%; color:white; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0; }
+      .bear-send-btn:hover { background:#089E90; transform:scale(1.05); }
+      .bear-send-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+
+      .bear-no-report { text-align:center; padding:40px 24px; }
+      .bear-no-report-icon { font-size:56px; margin-bottom:16px; }
+      .bear-no-report h3 { font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:8px; color:var(--text); }
+      .bear-no-report p { font-size:14px; color:var(--text-muted); line-height:1.7; margin-bottom:20px; }
+    </style>
+
+    <div class="bear-chat-wrap">
+      <!-- Header -->
+      <div class="bear-chat-header">
+        <div class="bear-chat-header-left">
+          <div class="bear-avatar-lg">🐻</div>
+          <div>
+            <div class="bear-chat-name">Barita 🐾</div>
+            <div class="bear-chat-sub">Your personal Wealth Advisor Bear · Barita Investments</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="bear-online"><div class="bear-online-dot"></div>Online</div>
+          ${profile ? `<span class="profile-badge ${profile.toLowerCase()}" style="font-size:11px">${esc(profile)}</span>` : ''}
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="bear-messages" id="bear-msgs">
+        ${!hasReport ? `
+          <div class="bear-no-report">
+            <div class="bear-no-report-icon">🐻</div>
+            <h3>Hi! I'm Barita 🎉</h3>
+            <p>I haven't built your portfolio yet — complete the questionnaire first and I'll be able to give you personalised advice, explain your allocation, answer questions, and more!</p>
+            <button class="btn-action" onclick="window.location.href='/questionnaire'">📋 Start Questionnaire →</button>
+          </div>` : ''}
+      </div>
+
+      <!-- Input -->
+      <div class="bear-input-row">
+        <textarea class="bear-text-input" id="bear-input" placeholder="Ask me anything about your portfolio, investing, or strategy… 🍯" rows="1"></textarea>
+        <button class="bear-send-btn" id="bear-send" ${!hasReport ? 'disabled' : ''}>→</button>
+      </div>
     </div>
   `;
-  wrap.appendChild(row);
-  wrap.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  // ── Init chat history ──
+  if (hasReport && state.chatHistory.length === 0) {
+    const bProfile = state.report?.behavioral_profile || state.report?.profile || 'Moderate';
+    const conf     = state.report?.confidence?.score;
+    const mc       = state.report?.monte_carlo;
+    const greeting = `🐻 Hey ${esc(state.answers?.first_name || 'there')}! Pawsome to see you on the dashboard! 🎉
+
+I've finished building your portfolio. You've been classified as a **${esc(bProfile)}** investor${conf ? ` with a confidence score of **${conf}/100**` : ''}. ${mc ? `Running the numbers through Monte Carlo simulation, there's a **${mc.prob_double}% chance** of doubling your initial investment over 10 years! 🍯` : ''}
+
+Feel free to ask me anything — why I picked specific assets, what volatility means, how to read your report, or anything else on your mind!`;
+    bearAddMessage(greeting, null, false);
+  } else if (hasReport) {
+    state.chatHistory.forEach(m => {
+      if (m.role === 'advisor') bearAddMessage(m.text, null, false);
+      else if (m.role === 'user') bearAddUserMessage(m.text, false);
+    });
+  }
+
+  // ── Wire up input ──
+  const inputEl = $('bear-input');
+  const sendEl  = $('bear-send');
+  if (!inputEl || !sendEl) return;
+
+  inputEl.addEventListener('input', () => {
+    sendEl.disabled = !inputEl.value.trim();
+    inputEl.style.height = 'auto';
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+  });
+
+  inputEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); bearSend(); }
+  });
+
+  sendEl.addEventListener('click', bearSend);
 }
 
-async function sendMessage() {
-  const input = $('chat-input');
-  const text  = input.value.trim();
+// ── Bear message helpers ──────────────────────────────────────────────────────
+function bearAddMessage(text, options, scroll = true) {
+  const wrap = $('bear-msgs');
+  if (!wrap) return;
+
+  const row = document.createElement('div');
+  row.className = 'bmsg-bear';
+  row.innerHTML = `
+    <div class="bmsg-bear-av">🐻</div>
+    <div class="bmsg-bear-bubble">${bearFormat(text)}</div>
+  `;
+  wrap.appendChild(row);
+
+  if (options && options.length) {
+    const tray = document.createElement('div');
+    tray.className = 'bear-options';
+    tray.id = 'bear-options-tray';
+    options.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.className = 'bear-opt-btn';
+      btn.innerHTML = `<span class="opt-check"></span>${esc(opt)}`;
+      btn.addEventListener('click', () => {
+        tray.querySelectorAll('.bear-opt-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        btn.querySelector('.opt-check').textContent = '✓';
+        setTimeout(() => {
+          tray.remove();
+          bearSendText(opt);
+        }, 280);
+      });
+      tray.appendChild(btn);
+    });
+    wrap.appendChild(tray);
+  }
+
+  if (scroll) bearScroll();
+}
+
+function bearAddUserMessage(text, scroll = true) {
+  const wrap = $('bear-msgs');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'bmsg-user';
+  row.innerHTML = `<div class="bmsg-user-bubble">${esc(text)}</div>`;
+  wrap.appendChild(row);
+  if (scroll) bearScroll();
+}
+
+function bearShowTyping() {
+  const wrap = $('bear-msgs');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'bmsg-bear'; row.id = 'bear-typing';
+  row.innerHTML = `<div class="bmsg-bear-av">🐻</div><div class="bmsg-bear-bubble"><div class="bear-typing"><div class="bear-typing-dot"></div><div class="bear-typing-dot"></div><div class="bear-typing-dot"></div></div></div>`;
+  wrap.appendChild(row);
+  bearScroll();
+}
+
+function bearRemoveTyping() {
+  document.getElementById('bear-typing')?.remove();
+}
+
+function bearScroll() {
+  const wrap = $('bear-msgs');
+  if (wrap) setTimeout(() => wrap.scrollTop = wrap.scrollHeight, 50);
+}
+
+function bearFormat(text) {
+  return esc(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br/>');
+}
+
+// ── Bear send ────────────────────────────────────────────────────────────────
+async function bearSend() {
+  const input = $('bear-input');
+  if (!input) return;
+  const text = input.value.trim();
   if (!text) return;
   input.value = '';
+  input.style.height = 'auto';
+  $('bear-send').disabled = true;
+  bearSendText(text);
+}
 
-  const userMsg = { role: 'user', text };
-  state.chatHistory.push(userMsg);
-  appendMessage(userMsg);
+async function bearSendText(text) {
+  if (!text.trim()) return;
 
-  const thinking = { role: 'advisor', thinking: true };
-  appendMessage(thinking);
+  bearAddUserMessage(text);
+  state.chatHistory.push({ role: 'user', text });
+
+  // Clear any option trays
+  document.getElementById('bear-options-tray')?.remove();
+
+  bearShowTyping();
 
   try {
     const data = await callBackend('/chat', {
-      message:  text,
-      answers:  state.answers,
-      report:   state.report,
-      history:  state.chatHistory.filter(m => !m.thinking).slice(-8),
+      message: text,
+      answers: state.answers,
+      report:  state.report,
+      history: state.chatHistory.filter(m => !m.thinking).slice(-10),
     });
-    const wrap = $('advisor-wrap');
-    if (wrap?.lastElementChild) wrap.lastElementChild.remove();
-    const reply = { role: 'advisor', text: data.reply };
-    state.chatHistory.push(reply);
-    appendMessage(reply);
+    bearRemoveTyping();
+    const reply = data.reply || "Sorry, I had a little hiccup! 🐻 Try again?";
+    bearAddMessage(reply, null);
+    state.chatHistory.push({ role: 'advisor', text: reply });
   } catch(e) {
-    const wrap = $('advisor-wrap');
-    if (wrap?.lastElementChild) wrap.lastElementChild.remove();
-    const err = { role: 'advisor', text: 'Sorry, I could not connect to the advisor service. Please check that the backend is running.' };
-    appendMessage(err);
+    bearRemoveTyping();
+    bearAddMessage(`Oops! Something went wrong 🐾 (${e.message}). Make sure the backend is running!`, null);
   }
+
+  const sendBtn = $('bear-send');
+  if (sendBtn) sendBtn.disabled = false;
 }
+
+// Legacy stubs — kept so nothing crashes if called from elsewhere
+function appendMessage(msg) { /* replaced by bear chat */ }
+async function sendMessage() { await bearSend(); }
 
 // ── REPORTS VIEW ──
 async function renderReportsView(area) {
@@ -771,41 +1194,159 @@ function getActiveQuestions() {
   return qs;
 }
 
+// ─── TWO-PAGE QUESTIONNAIRE ──────────────────────────────────────────────────
+// Page 1: Personal info (first_name, last_name, age) — shown together
+// Page 2: All remaining questions — full scrollable page
+// state.qPage tracks which page we're on (1 or 2)
+
 window.openQuestionnaire = function() {
-  state.qStep = 0;
-  $('modal-questionnaire').classList.remove('hidden');
-  renderQuestion();
+  window.location.href = '/questionnaire';
 };
 
 function closeQuestionnaire() { $('modal-questionnaire').classList.add('hidden'); }
 
-function renderQuestion() {
-  const questions = getActiveQuestions();
-  const total     = questions.length;
-  const q         = questions[state.qStep];
-  if (!q) return;
+function getProfileQuestions() {
+  const profileSection = SECTIONS.find(s => s.id === 'profile');
+  return profileSection ? profileSection.questions : [];
+}
 
-  const pct = Math.round(((state.qStep) / total) * 100);
-  $('q-progress-fill').style.width = pct + '%';
-  $('q-progress-pct').textContent  = pct + '%';
+function getMainQuestions() {
+  const qs = [];
+  SECTIONS.forEach(sec => {
+    if (sec.id === 'profile') return; // skip profile — shown on page 1
+    sec.questions.forEach(q => {
+      if (!q.showIf || q.showIf(state.answers)) {
+        qs.push({ ...q, sectionTitle: sec.title });
+      }
+    });
+  });
+  return qs;
+}
 
-  // Back button
-  $('q-btn-back').style.visibility = state.qStep === 0 ? 'hidden' : 'visible';
+function renderQPage() {
+  if (state.qPage === 1) renderPage1();
+  else renderPage2();
+}
 
-  // Next button label
-  $('q-btn-next').textContent = state.qStep === total - 1 ? 'Submit ✓' : 'Next →';
-  $('q-btn-next').disabled    = !isAnswered(q);
+// ── PAGE 1: Personal info (all 3 on one page) ──────────────────────────────
+function renderPage1() {
+  const profileQs = getProfileQuestions();
+  const total = 2; // 2 pages total
+
+  $('q-progress-fill').style.width = '0%';
+  $('q-progress-pct').textContent  = '0%';
+  $('q-btn-back').style.visibility = 'hidden';
+  $('q-btn-next').textContent = 'Continue →';
 
   const body = $('q-body');
   body.innerHTML = `
-    <div class="q-section-label">${q.sectionTitle} · Question ${state.qStep + 1} of ${total}</div>
-    <div class="q-text">${esc(q.text)}</div>
-    ${q.hint ? `<div class="q-hint">${esc(q.hint)}</div>` : ''}
-    <div id="q-options-wrap"></div>
+    <div class="q-section-label">Page 1 of 2 · Your Profile</div>
+    <div class="q-text" style="margin-bottom:6px">Let's start with a few details about you.</div>
+    <div class="q-hint">This helps us personalise your portfolio report.</div>
+    <div id="profile-fields" style="display:flex;flex-direction:column;gap:16px;margin-top:20px"></div>
   `;
 
-  const wrap = $('q-options-wrap');
+  const fieldsWrap = $('profile-fields');
+  profileQs.forEach(q => {
+    const wrap = el('div', '');
+    wrap.innerHTML = `
+      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">${esc(q.text)}</label>
+      <input
+        class="q-input"
+        id="profile-input-${q.id}"
+        type="${q.id === 'age' ? 'number' : 'text'}"
+        placeholder="${esc(q.placeholder || '')}"
+        value="${esc(state.answers[q.id] || '')}"
+        min="${q.id === 'age' ? '16' : ''}"
+        max="${q.id === 'age' ? '100' : ''}"
+        style="width:100%"
+      />
+    `;
+    fieldsWrap.appendChild(wrap);
 
+    const input = wrap.querySelector(`#profile-input-${q.id}`);
+    input.addEventListener('input', e => {
+      state.answers[q.id] = e.target.value.trim();
+      checkPage1Complete();
+    });
+  });
+
+  checkPage1Complete();
+}
+
+function checkPage1Complete() {
+  const profileQs = getProfileQuestions();
+  const allFilled = profileQs.every(q => state.answers[q.id] && state.answers[q.id].toString().trim());
+  $('q-btn-next').disabled = !allFilled;
+}
+
+// ── PAGE 2: Full scrollable questionnaire ─────────────────────────────────
+function renderPage2() {
+  const mainQs = getMainQuestions();
+
+  $('q-progress-fill').style.width = '50%';
+  $('q-progress-pct').textContent  = '50%';
+  $('q-btn-back').style.visibility = 'visible';
+  $('q-btn-next').textContent = 'Submit & Generate Portfolio ✓';
+  $('q-btn-next').disabled = false;
+
+  const body = $('q-body');
+  body.innerHTML = `
+    <div class="q-section-label">Page 2 of 2 · Investment Profile</div>
+    <div class="q-text" style="margin-bottom:6px">Complete your investment profile below.</div>
+    <div class="q-hint">Scroll through and answer all questions. Required questions are marked.</div>
+    <div id="main-questions" style="margin-top:20px;display:flex;flex-direction:column;gap:28px"></div>
+  `;
+
+  const container = $('main-questions');
+  let currentSection = '';
+
+  mainQs.forEach((q, idx) => {
+    // Section divider
+    if (q.sectionTitle !== currentSection) {
+      currentSection = q.sectionTitle;
+      const divider = el('div', '');
+      divider.innerHTML = `
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;
+                    color:var(--teal);padding:8px 0 4px;border-top:1px solid var(--border-light);
+                    margin-top:4px">
+          ${esc(currentSection)}
+        </div>
+      `;
+      container.appendChild(divider);
+    }
+
+    const qWrap = el('div', '');
+    qWrap.innerHTML = `
+      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:${q.hint ? '4px' : '12px'};line-height:1.45">
+        ${esc(q.text)}
+      </div>
+      ${q.hint ? `<div class="q-hint" style="margin-bottom:12px">${esc(q.hint)}</div>` : ''}
+      <div id="q2-wrap-${q.id}"></div>
+    `;
+    container.appendChild(qWrap);
+
+    const wrap = qWrap.querySelector(`#q2-wrap-${q.id}`);
+    renderQuestionInput(q, wrap);
+  });
+
+  // Update progress on scroll
+  const modal = document.querySelector('.modal-q');
+  if (modal) {
+    modal.addEventListener('scroll', updatePage2Progress);
+  }
+}
+
+function updatePage2Progress() {
+  const modal = document.querySelector('.modal-q');
+  if (!modal) return;
+  const scrolled = modal.scrollTop / (modal.scrollHeight - modal.clientHeight);
+  const pct = Math.round(50 + scrolled * 50);
+  $('q-progress-fill').style.width = pct + '%';
+  $('q-progress-pct').textContent  = pct + '%';
+}
+
+function renderQuestionInput(q, wrap) {
   if (q.type === 'single') {
     const opts = el('div', 'q-options');
     q.options.forEach(opt => {
@@ -815,7 +1356,6 @@ function renderQuestion() {
         state.answers[q.id] = opt;
         opts.querySelectorAll('.q-opt').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
-        $('q-btn-next').disabled = false;
       });
       opts.appendChild(btn);
     });
@@ -831,31 +1371,27 @@ function renderQuestion() {
         const cur = state.answers[q.id] || [];
         if (cur.includes(opt)) { state.answers[q.id] = cur.filter(x => x !== opt); btn.classList.remove('selected'); }
         else                   { state.answers[q.id] = [...cur, opt];              btn.classList.add('selected'); }
-        $('q-btn-next').disabled = false; // multi is optional
       });
       opts.appendChild(btn);
     });
     wrap.appendChild(opts);
-    $('q-btn-next').disabled = false;
 
   } else if (q.type === 'text') {
     const input = el('input', 'q-input');
     input.type        = 'text';
     input.placeholder = q.placeholder || '';
     input.value       = state.answers[q.id] || '';
-    input.addEventListener('input', e => {
-      state.answers[q.id] = e.target.value;
-      $('q-btn-next').disabled = !e.target.value.trim();
-    });
+    input.style.width = '100%';
+    input.addEventListener('input', e => { state.answers[q.id] = e.target.value; });
     wrap.appendChild(input);
 
   } else if (q.type === 'textarea') {
     const ta = el('textarea', 'q-input q-textarea');
     ta.placeholder = q.placeholder || '';
     ta.value       = state.answers[q.id] || '';
-    ta.addEventListener('input', e => { state.answers[q.id] = e.target.value; $('q-btn-next').disabled = false; });
+    ta.style.width = '100%';
+    ta.addEventListener('input', e => { state.answers[q.id] = e.target.value; });
     wrap.appendChild(ta);
-    $('q-btn-next').disabled = false;
   }
 }
 
@@ -865,12 +1401,10 @@ function isAnswered(q) {
 }
 
 async function advanceQuestion() {
-  const questions = getActiveQuestions();
-  if (state.qStep < questions.length - 1) {
-    state.qStep++;
-    renderQuestion();
+  if (state.qPage === 1) {
+    state.qPage = 2;
+    renderQPage();
   } else {
-    // Submit
     closeQuestionnaire();
     await submitQuestionnaire();
   }
@@ -950,7 +1484,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('btn-toggle-mode').addEventListener('click', toggleRegisterMode);
   $('btn-close-q').addEventListener('click', closeQuestionnaire);
   $('q-btn-next').addEventListener('click', advanceQuestion);
-  $('q-btn-back').addEventListener('click', () => { if (state.qStep > 0) { state.qStep--; renderQuestion(); } });
+  $('q-btn-back').addEventListener('click', () => { if (state.qPage === 2) { state.qPage = 1; renderQPage(); } });
 
   ['input-email','input-password'].forEach(id => {
     $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleEmailAuth(); });

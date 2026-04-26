@@ -9,5 +9,7 @@ services:
         sync: false          # set manually in Render dashboard
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false          # set manually in Render dashboard
+      - key: DIMENSION_DEPTHS_BASE_URL
+        sync: false
     healthCheckPath: /health
 

@@ -395,20 +395,23 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
 ════════════════════════════════ */
 .modal-overlay {
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(10,15,30,0.6);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  padding: 24px; animation: fadeIn 0.2s ease;
+  background: white;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 0; animation: fadeIn 0.2s ease;
+  overflow-y: auto;
 }
+
 .modal-overlay.hidden { display: none !important; }
 
 .modal-q {
-  background: white; border-radius: var(--radius-xl);
-  width: 100%; max-width: 680px; max-height: 88vh;
+  background: white;
+  width: 100%; max-width: 780px;
+  min-height: 100vh;
   overflow-y: auto; position: relative;
-  box-shadow: var(--shadow-lg);
+  padding-bottom: 60px;
   animation: slideUp 0.3s cubic-bezier(0.22,1,0.36,1);
 }
+
 .modal-q::-webkit-scrollbar { width: 4px; }
 .modal-q::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 

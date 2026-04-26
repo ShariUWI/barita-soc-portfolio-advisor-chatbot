@@ -1,0 +1,234 @@
+═══════════════════════════════════════════════════════════════════════
+  BARITA WEALTH ADVISOR — HOW RISK IS DETERMINED & PORTFOLIOS ARE BUILT
+  Technical Design Document Companion · Team C · April 2026
+═══════════════════════════════════════════════════════════════════════
+
+
+OVERVIEW
+────────
+The system uses a 5-layer pipeline to move from raw questionnaire
+answers → a scientifically optimised, personalised portfolio.
+Each layer adds more intelligence than a simple score-and-filter approach.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 1 — RISK SCORING (The Foundation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+HOW IT WORKS:
+The client answers 24 questions. Each answer maps to a numeric score.
+All scores are summed and divided by the maximum possible (30 points).
+
+KEY VARIABLES USED:
+  • knowledge_level     — investment experience (0–3 pts)
+  • drop_reaction       — what they would do in a 20% crash (0–3 pts)
+  • risk_relationship   — psychological relationship with risk (0–3 pts)
+  • loss_vs_gain        — which outcome upsets them more (0–1 pts)
+  • max_loss            — maximum annual loss tolerated (0–3 pts)
+  • income_loss_runway  — how long they could survive without income (0–4 pts)
+  • debt_situation      — current debt level (0–3 pts)
+  • withdrawal_time     — how much they expect to withdraw in 2 years (0–3 pts)
+  • invest_style        — passive vs. active preference (0–4 pts)
+  • market_adjustment   — willingness to adjust to market conditions (0–3 pts)
+
+SCORING:
+  Score < 35% of max  →  Conservative (capital preservation focus)
+  Score 35%–65%       →  Moderate     (balanced growth and income)
+  Score > 65%         →  Aggressive   (maximum long-term growth)
+
+NEW QUESTIONS ADDED (from Design Doc):
+  • time_horizon       — how many years before funds are needed
+  • target_amount      — specific dollar target (feeds Monte Carlo)
+  • risk_comfort       — drawdown comfort on a 1–10 scale
+  • sector_view        — specific sector beliefs (feeds Black-Litterman)
+  • performance_benchmark — what they compare their portfolio to
+  • usd_liabilities    — USD-denominated debts
+  • inflation_protection — preference for inflation hedging
+  • loss_vs_gain       — loss aversion detection
+  • market_adjustment  — willingness to rebalance
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 2 — BEHAVIORAL RISK ADJUSTMENT (Psychology Layer)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY IT EXISTS:
+Research in behavioural finance shows that what people SAY they will do
+in a market crash and what they ACTUALLY do are often very different.
+This layer detects those gaps and adjusts the profile accordingly.
+
+BIASES DETECTED:
+  1. Loss Aversion Gap
+     VARIABLES: drop_reaction + loss_vs_gain + max_loss
+     SIGNAL: Client says they'd sell if market drops, fears losses more
+             than missing gains, AND has low stated tolerance.
+     ACTION: Profile moved one step more conservative.
+
+  2. Overconfidence
+     VARIABLES: knowledge_level + income_loss_runway + debt_situation
+     SIGNAL: High stated experience but weak financial safety net
+             while claiming Aggressive profile.
+     ACTION: Profile moderated — protects against forced selling
+             during a downturn when cash runs out.
+
+  3. Anchoring Bias
+     VARIABLES: performance_benchmark = "The amount I originally invested"
+     SIGNAL: Client fixates on their original investment as the
+             benchmark — classic loss-aversion anchoring.
+     ACTION: Portfolio built with a stronger floor on downside.
+
+  4. Overoptimism
+     VARIABLES: max_loss + drop_reaction + income_loss_runway + debt_situation
+     SIGNAL: Stated tolerance is extreme (>40% loss is "fine") but
+             the client has no safety net. Real-world constraints
+             would force an early exit.
+     ACTION: Slight conservative shift.
+
+RESULT: A "behavioral_profile" that may differ from the raw "profile".
+Both are stored in the report so the client can see the adjustment.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 3 — CORRELATION-AWARE ASSET SELECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY IT EXISTS:
+A simple "pick top-10 assets by score" approach would likely select
+assets that all move together — providing no real diversification.
+This layer uses the ACTUAL correlation matrix from Dimension Depths.
+
+HOW IT WORKS:
+  1. Each candidate asset is scored individually (Layer 1 logic).
+  2. Assets are selected one-at-a-time using a greedy algorithm.
+  3. At each step: Combined Score = Asset Score − (0.8 × Avg Correlation
+     with already-selected assets × 2.0)
+  4. This penalises assets that are highly correlated with what's
+     already in the portfolio — even if they score well individually.
+
+VARIABLES USED:
+  • correlation matrix   — from /api/soc/correlations/assets/ endpoint
+  • ticker pairings      — compared across all selected pairs
+  • _corr_penalty        — stored per asset, shown in the PDF report as
+                           "Diversification Contribution" (High/Medium/Low)
+
+RESULT: A portfolio where assets genuinely move differently from each
+other, reducing overall portfolio volatility without sacrificing return.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 4 — MVO + DYNAMIC WEIGHT ALLOCATION (The Optimisation Engine)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY IT EXISTS:
+Fixed percentage allocations (e.g. "always 30% bonds") ignore the
+actual mathematical relationship between assets. Mean-Variance
+Optimisation (MVO) finds the MATHEMATICALLY OPTIMAL weights.
+
+STRATEGY SELECTION:
+  Aggressive + Growth goal    →  Maximise Sharpe Ratio
+  Conservative                →  Minimise Volatility (Global Min Variance)
+  Income / Capital Preserve   →  Constrained MVO (yield ≥ 3.5%)
+
+FORMULA — MAXIMUM SHARPE RATIO:
+  Maximise: (Portfolio Return − Risk-Free Rate) / Portfolio Volatility
+  Where Risk-Free Rate = 4% (approx. JMD T-Bill yield)
+
+FORMULA — MINIMUM VOLATILITY:
+  Minimise: √(wᵀ Σ w)
+  Subject to: Σw = 1, 0.02 ≤ wᵢ ≤ 0.40
+
+FORMULA — INCOME CONSTRAINED:
+  Minimise: √(wᵀ Σ w)
+  Subject to: Σw = 1, Σ(wᵢ × yieldᵢ) ≥ 3.5%
+
+INPUTS:
+  • mu (μ)      — expected return vector from total_expected_return
+  • Sigma (Σ)   — covariance matrix from /api/soc/covariance/assets/
+  • yields      — income_yield_ann per asset (income strategy only)
+
+FALLBACK:
+  If scipy is unavailable or optimisation fails, the system uses
+  a score-proportional softmax allocation with dynamic class caps
+  driven by the client context (goal_equity_bias, resilience_score,
+  usd_bias, inflation_hedge_need, etc.)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 4b — MONTE CARLO SIMULATION (Goal-Based Validation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+WHY IT EXISTS:
+MVO tells us the OPTIMAL portfolio for today's expected conditions.
+Monte Carlo asks: "But what if things don't go perfectly?"
+
+HOW IT WORKS:
+  1. Take the MVO-optimised weights (w).
+  2. Calculate portfolio expected return (p_ret) and volatility (p_vol).
+  3. Simulate 5,000 random annual return paths over 10 years using
+     a normal distribution: returns ~ N(p_ret, p_vol)
+  4. For each simulation, compound the returns: Final Wealth = $100,000
+     × ∏(1 + annual_return)
+  5. Analyse the 5,000 final wealth values.
+
+VARIABLES CALCULATED:
+  • prob_double     — probability of doubling the initial investment
+  • prob_preserve   — probability of keeping at least 90% of capital
+  • median_final    — median outcome across all simulations
+  • p10_final       — worst-case 10th percentile outcome
+  • p90_final       — best-case 90th percentile outcome
+
+FEEDBACK LOOP (per Design Doc "Client Conversation" logic):
+  If prob_double < 30%: the advisory note flags this, suggesting the
+  client may need to increase savings or accept a moderate profile.
+
+FUTURE ENHANCEMENT:
+  Replace normal distribution with skewed/fat-tailed distributions
+  using skewness and excess_kurtosis from asset data — particularly
+  important for Jamaican assets which can have sudden large price moves.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LAYER 5 — CONFIDENCE SCORE (Quality Assurance)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The confidence score (0–100) gives the client a transparent view of
+how well-matched their portfolio is to their profile.
+
+COMPONENTS:
+  Questionnaire completeness        20 pts  (# of key fields answered)
+  Profile-allocation alignment      25 pts  (actual weights vs. ideal)
+  Diversification quality           25 pts  (1 − avg pairwise correlation)
+  Financial resilience              15 pts  (runway + debt situation)
+  Absence of behavioral flags       15 pts  (−5 per detected bias)
+
+GRADE:
+  80–100: A  Excellent match
+  65–79:  B  Good match
+  50–64:  C  Moderate match
+  <50:    D  Review recommended
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA SOURCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All asset variables come from the Dimension Depths API:
+  /api/soc/assets/                  — returns, volatility, yield, class
+  /api/soc/covariance/assets/       — Σ matrix for MVO
+  /api/soc/correlations/assets/     — correlation matrix for diversification
+  /api/soc/correlations/subclasses/ — super-class correlation structure
+
+VARIABLES USED FROM EACH ASSET:
+  total_expected_return   →  MVO expected return vector (μ)
+  volatility_ann          →  fallback covariance estimation
+  income_yield_ann        →  income-constrained MVO yield constraint
+  sharpe_ratio            →  individual asset scoring bonus
+  super_class / asset_class → classification (Cash, Equity, Fixed Income…)
+  currency                →  USD bias matching
+  semi_deviation_ann      →  (future) downside risk adjustment
+  skewness / excess_kurtosis → (future) fat-tail Monte Carlo
+
+
+═══════════════════════════════════════════════════════════════════════
+End of document · Barita SOC Team C · April 2026
+═══════════════════════════════════════════════════════════════════════

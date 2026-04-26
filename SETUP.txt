@@ -6,15 +6,15 @@
 YOUR FILE STRUCTURE (add to your existing folder)
 ──────────────────────────────────────────────────
 barita-portfolio advisor/
-├── index.html          ← REPLACE with new version
-├── style.css           ← REPLACE with new version
-├── app.js              ← REPLACE with new version
-├── app.py              ← NEW — Flask backend
-├── requirements.txt    ← NEW — Python dependencies
-├── render.yaml         ← NEW — Render deploy config
-├── firestore.rules     ← already exists, keep it
-├── firestore.indexes.json ← already exists
-└── firebase.json       ← already exists
+├── index.html          
+├── style.css           
+├── app.js              
+├── app.py              
+├── requirements.txt    
+├── render.yaml         
+├── firestore.rules     
+├── firestore.indexes.json 
+└── firebase.json       
 
 
 STEP 1 — FILL IN YOUR FIREBASE CONFIG IN app.js
