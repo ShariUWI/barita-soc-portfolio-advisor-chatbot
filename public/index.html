@@ -3,183 +3,464 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <title>Barita Wealth Advisor</title>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+
   <link rel="stylesheet" href="style.css" />
+
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+  />
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 </head>
+
 <body>
 
-<!-- ═══════════════════════════════════════════════
-     LOGIN SCREEN
-═══════════════════════════════════════════════ -->
-<div id="screen-login" class="screen active">
-  <div class="login-bg">
-    <div class="login-bg-shape s1"></div>
-    <div class="login-bg-shape s2"></div>
-    <div class="login-bg-shape s3"></div>
-  </div>
-  <div class="login-split">
-    <!-- Left panel -->
-    <div class="login-left">
-      <div class="login-brand">
-        <div class="brand-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 3.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" fill="white"/></svg>
-        </div>
-        <span class="brand-name">Barita Wealth Advisor</span>
-      </div>
-      <div class="login-hero">
-        <h1 class="login-hero-h">Smart investing<br/>starts here.</h1>
-        <p class="login-hero-p">Get a personalised portfolio built around your goals, risk tolerance, and financial situation — powered by AI.</p>
-        <div class="login-stats">
-          <div class="login-stat"><div class="login-stat-val">3 mins</div><div class="login-stat-label">To complete</div></div>
-          <div class="login-stat-div"></div>
-          <div class="login-stat"><div class="login-stat-val">AI-driven</div><div class="login-stat-label">Recommendations</div></div>
-          <div class="login-stat-div"></div>
-          <div class="login-stat"><div class="login-stat-val">PDF</div><div class="login-stat-label">Report generated</div></div>
-        </div>
-      </div>
+  <!-- LOGIN SCREEN -->
+  <div id="screen-login" class="screen active">
+    <div class="login-bg">
+      <div class="login-bg-shape s1"></div>
+      <div class="login-bg-shape s2"></div>
+      <div class="login-bg-shape s3"></div>
     </div>
 
-    <!-- Right panel -->
-    <div class="login-right">
-      <div class="login-card">
-        <h2 class="login-card-h" id="auth-title">Sign in to your account</h2>
-        <p class="login-card-sub" id="auth-sub">Welcome back. Enter your details below.</p>
+    <div class="login-split">
+      <div class="login-left">
+        <div class="login-brand">
+          <div class="brand-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+              <path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 3.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" fill="white"/>
+            </svg>
+          </div>
 
-        <div id="login-error" class="error-msg hidden"><span>⚠</span><span id="login-error-text"></span></div>
+          <span class="brand-name">
+            Barita Wealth Advisor
+          </span>
+        </div>
 
-        <button class="btn-google" id="btn-google">
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18" alt="" />
-          Continue with Google
-        </button>
+        <div class="login-hero">
+          <h1 class="login-hero-h">
+            Smart investing<br />
+            starts here.
+          </h1>
 
-        <div class="divider-row"><span>or</span></div>
+          <p class="login-hero-p">
+            Get a personalised portfolio built around your goals, risk tolerance,
+            and financial situation — powered by AI.
+          </p>
 
-        <div id="register-fields" class="hidden">
-          <div class="field-wrap">
-            <label class="field-label">Full name</label>
-            <input class="field-input" id="input-name" type="text" placeholder="Jane Smith" />
+          <div class="login-stats">
+            <div class="login-stat">
+              <div class="login-stat-val">3 mins</div>
+              <div class="login-stat-label">To complete</div>
+            </div>
+
+            <div class="login-stat-div"></div>
+
+            <div class="login-stat">
+              <div class="login-stat-val">AI-driven</div>
+              <div class="login-stat-label">Recommendations</div>
+            </div>
+
+            <div class="login-stat-div"></div>
+
+            <div class="login-stat">
+              <div class="login-stat-val">PDF</div>
+              <div class="login-stat-label">Report generated</div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="field-wrap">
-          <label class="field-label">Email address</label>
-          <input class="field-input" id="input-email" type="email" placeholder="you@university.edu" />
-        </div>
-        <div class="field-wrap">
-          <label class="field-label" style="display:flex;justify-content:space-between">
-            Password
-            <button class="link-btn" id="btn-forgot">Forgot password?</button>
-          </label>
-          <input class="field-input" id="input-password" type="password" placeholder="••••••••" />
-        </div>
+      <div class="login-right">
+        <div class="login-card">
+          <h2 class="login-card-h" id="auth-title">
+            Sign in to your account
+          </h2>
 
-        <div id="register-confirm" class="hidden">
-          <div class="field-wrap">
-            <label class="field-label">Confirm password</label>
-            <input class="field-input" id="input-confirm" type="password" placeholder="••••••••" />
+          <p class="login-card-sub" id="auth-sub">
+            Welcome back. Enter your details below.
+          </p>
+
+          <div id="login-error" class="error-msg hidden">
+            <span>⚠</span>
+            <span id="login-error-text"></span>
           </div>
+
+          <button class="btn-google" id="btn-google">
+            <img
+              src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+              width="18"
+              height="18"
+              alt=""
+            />
+            Continue with Google
+          </button>
+
+          <div class="divider-row">
+            <span>or</span>
+          </div>
+
+          <div id="register-fields" class="hidden">
+            <div class="field-wrap">
+              <label class="field-label">Full name</label>
+              <input
+                class="field-input"
+                id="full-name"
+                type="text"
+                placeholder="Jane Smith"
+              />
+            </div>
+          </div>
+
+          <div class="field-wrap">
+            <label class="field-label">Email address</label>
+            <input
+              class="field-input"
+              id="email"
+              type="email"
+              placeholder="you@university.edu"
+            />
+          </div>
+
+          <div class="field-wrap">
+            <label
+              class="field-label"
+              style="display:flex;justify-content:space-between"
+            >
+              Password
+
+              <button class="link-btn" id="btn-forgot">
+                Forgot password?
+              </button>
+            </label>
+
+            <input
+              class="field-input"
+              id="password"
+              type="password"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <div id="register-confirm" class="hidden">
+            <div class="field-wrap">
+              <label class="field-label">Confirm password</label>
+              <input
+                class="field-input"
+                id="confirm-password"
+                type="password"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          <button class="btn-primary" id="btn-email-auth">
+            <span id="btn-email-text">Sign In</span>
+            <span id="btn-email-arrow">→</span>
+            <span id="btn-email-spinner" class="spinner hidden"></span>
+          </button>
+
+          <p class="login-toggle">
+            <span id="toggle-label">
+              Don't have an account?
+            </span>
+
+            <button class="link-btn bold" id="btn-toggle-mode">
+              Create one
+            </button>
+          </p>
+
+          <p class="login-note">
+            Barita SOC participants only · UWI &amp; UTech · 2026
+          </p>
         </div>
-
-        <button class="btn-primary" id="btn-email-auth">
-          <span id="btn-email-text">Sign In</span>
-          <span id="btn-email-arrow">→</span>
-          <span id="btn-email-spinner" class="spinner hidden"></span>
-        </button>
-
-        <p class="login-toggle">
-          <span id="toggle-label">Don't have an account?</span>
-          <button class="link-btn bold" id="btn-toggle-mode">Create one</button>
-        </p>
-
-        <p class="login-note">Barita SOC participants only · UWI &amp; UTech · 2026</p>
       </div>
     </div>
   </div>
-</div>
 
-<!-- ═══════════════════════════════════════════════
-     MAIN APP — DASHBOARD LAYOUT
-═══════════════════════════════════════════════ -->
-<div id="screen-app" class="screen hidden">
+  <!-- MAIN APP -->
+  <div id="screen-app" class="screen hidden">
 
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-brand">
-      <div class="brand-icon sm">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 3.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" fill="white"/></svg>
-      </div>
-      <span class="brand-name sm">Barita Advisor</span>
-    </div>
-
-    <nav class="sidebar-nav">
-      <div class="sidebar-section-label">Main</div>
-      <button class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        Dashboard
-      </button>
-      <button class="nav-item" data-view="questionnaire" onclick="window.location.href='/questionnaire'">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-        🐻 Questionnaire
-      </button>
-      <button class="nav-item" data-view="portfolio" onclick="switchView('portfolio')">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-        My Portfolio
-      </button>
-      <button class="nav-item" data-view="advisor" onclick="switchView('advisor')">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-        AI Advisor
-      </button>
-      <button class="nav-item" data-view="reports" onclick="switchView('reports')">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Reports
-      </button>
-
-      <div class="sidebar-section-label" style="margin-top:16px">Settings</div>
-      <button class="nav-item" onclick="handleSignOut()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-        Sign Out
-      </button>
-    </nav>
-
-    <!-- User info at bottom -->
-    <div class="sidebar-user">
-      <div class="sidebar-user-avatar" id="sidebar-avatar">N</div>
-      <div class="sidebar-user-info">
-        <div class="sidebar-user-name" id="sidebar-name">User</div>
-        <div class="sidebar-user-email" id="sidebar-email">—</div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Main content -->
-  <div class="main-wrap">
-    <!-- Top bar -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <h2 class="topbar-title" id="topbar-title">Dashboard</h2>
-      </div>
-      <div class="topbar-right">
-        <div class="topbar-search">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="Search…" />
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M3 3h7v7H3V3zm11 0h7v7h-7V3zM3 14h7v7H3v-7zm11 3.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z" fill="white"/>
+          </svg>
         </div>
-        <div class="topbar-avatar" id="topbar-avatar">N</div>
-      </div>
-    </header>
 
-    <!-- Views -->
+        <span class="brand-name sm">
+          Barita Advisor
+        </span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="sidebar-section-label">
+          Main
+        </div>
+
+        <button
+          class="nav-item active"
+          data-view="dashboard"
+          onclick="switchView('dashboard')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+          </svg>
+          Dashboard
+        </button>
+
+        <button
+          class="nav-item"
+          data-view="portfolio"
+          onclick="switchView('portfolio')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          My Portfolio
+        </button>
+
+        <button
+          class="nav-item"
+          data-view="advisor"
+          onclick="switchView('advisor')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          AI Chatbot
+        </button>
+
+        <button
+          class="nav-item"
+          data-view="reports"
+          onclick="switchView('reports')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Reports
+        </button>
+
+        <div class="sidebar-section-label" style="margin-top:16px">
+          Settings
+        </div>
+
+        <button class="nav-item" onclick="handleSignOut()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+          </svg>
+          Sign Out
+        </button>
+      </nav>
+
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar" id="sidebar-avatar">
+          N
+        </div>
+
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-name">
+            User
+          </div>
+
+          <div class="sidebar-user-email" id="sidebar-email">
+            —
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="topbar-left">
+          <h2 class="topbar-title" id="topbar-title">
+            Dashboard
+          </h2>
+        </div>
+
+        <div class="topbar-right">
+          <div class="topbar-search">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+
+            <input
+              type="text"
+              id="global-search"
+              placeholder="Search assets, reports, risk metrics..."
+            />
+          </div>
+
+          <button
+            class="theme-toggle-btn"
+            id="theme-toggle-btn"
+            title="Toggle theme"
+          >
+            🌙
+          </button>
+
+          <div class="topbar-avatar" id="topbar-avatar">
+            N
+          </div>
+        </div>
+      </header>
+
     <div class="view-area" id="view-area">
-      <!-- Rendered by JS -->
+
+      <!-- HERO BANNER -->
+    <div class="view-area" id="view-area">
+      <!-- Rendered by app.js -->
+    </div>
+
+    
+      <!-- SUMMARY CARDS -->
+      <section class="summary-grid">
+        <div class="stat-card">
+          <div class="stat-icon">✅</div>
+          <h3>100%</h3>
+          <p>Profiling Completed</p>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">🛡️</div>
+          <h3 id="riskProfileCard">Conservative</h3>
+          <p>Good match</p>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">📈</div>
+          <h3 id="expectedReturnCard">5.6%</h3>
+          <p>Annualised estimate</p>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-icon">🎯</div>
+          <h3 id="goalProbabilityCard">0%</h3>
+          <p>Monte Carlo result</p>
+        </div>
+      </section>
+
+      <!-- MAIN DASHBOARD -->
+      <section class="dashboard-grid">
+        <div class="panel large">
+          <h3>Where Your Money Is Going</h3>
+          <canvas id="allocationChart"></canvas>
+        </div>
+
+        <div class="panel">
+          <h3>Optimisation Summary</h3>
+
+          <div class="metric-line">
+            <span>Expected Return</span>
+            <strong id="metricReturn">5.6%</strong>
+          </div>
+
+          <div class="metric-line">
+            <span>Volatility</span>
+            <strong id="metricVolatility">0.1%</strong>
+          </div>
+
+          <div class="metric-line">
+            <span>Sharpe Ratio</span>
+            <strong id="metricSharpe">8.94</strong>
+          </div>
+
+          <div class="metric-line">
+            <span>Monte Carlo Goal Probability</span>
+            <strong id="metricGoal">0%</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- LOWER CARDS -->
+      <section class="dashboard-grid three">
+        <div class="panel">
+          <h3>Portfolio Performance</h3>
+          <canvas id="performanceChart"></canvas>
+        </div>
+
+        <div class="panel">
+          <h3>Risk Breakdown</h3>
+          <canvas id="riskChart"></canvas>
+        </div>
+
+        <div class="panel">
+          <h3>Market Snapshot</h3>
+
+          <div class="metric-line">
+            <span>JSE Index</span>
+            <strong>391,874.12</strong>
+          </div>
+
+          <div class="metric-line">
+            <span>Inflation (Jamaica)</span>
+            <strong>5.6%</strong>
+          </div>
+
+          <div class="metric-line">
+            <span>BOJ Policy Rate</span>
+            <strong>7.00%</strong>
+          </div>
+        </div>
+      </section>
+
+      <!-- BEAR TAKE -->
+      <section class="bear-take">
+        🐻 Bear’s Take:
+        Your conservative portfolio is built for stability and capital preservation.
+      </section>
+
+    </div>
+
+      <div id="loading-overlay" class="hidden">
+        <div class="loading-card">
+          <div class="loading-spinner"></div>
+
+          <h3>
+            Running Portfolio Engine...
+          </h3>
+
+          <p>
+            Performing MVO, diversification analysis, Black-Litterman tilting,
+            HRP clustering, and Monte Carlo simulations.
+          </p>
+        </div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Questionnaire now lives at /questionnaire (bear chatbot) -->
+  <div id="toast-container"></div>
 
-<script type="module" src="app.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -635,3 +635,263 @@ body { font-family: var(--font-body); background: var(--bg); color: var(--text);
   .modal-q-inner { padding: 28px 20px 24px; }
   .view-area   { padding: 20px 16px; }
 }
+
+/* ═══════════════════════════════════════
+   DASHBOARD UPGRADE
+═══════════════════════════════════════ */
+
+.panel {
+  background: rgba(255,255,255,0.92);
+  border: 1px solid rgba(226,232,240,0.7);
+  border-radius: 22px;
+  box-shadow:
+    0 8px 24px rgba(15,23,42,0.06),
+    0 2px 6px rgba(15,23,42,0.04);
+  overflow: hidden;
+}
+
+.panel-header {
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-body {
+  padding: 22px;
+}
+
+.stat-card {
+  background: rgba(255,255,255,0.95);
+  border: 1px solid rgba(226,232,240,0.7);
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow:
+    0 4px 14px rgba(15,23,42,0.05);
+  transition: all .25s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 12px 24px rgba(15,23,42,0.08);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4,1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1100px) {
+  .stat-grid {
+    grid-template-columns: repeat(2,1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .stat-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-hero {
+  background:
+    linear-gradient(
+      135deg,
+      #081B4B 0%,
+      #102A72 45%,
+      #0BB8A9 140%
+    );
+
+  border-radius: 24px;
+  padding: 30px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 26px;
+}
+
+.dashboard-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(255,255,255,0.18),
+      transparent 35%
+    );
+}
+
+.dashboard-hero h2 {
+  font-size: 30px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.dashboard-hero p {
+  color: rgba(255,255,255,0.82);
+  max-width: 600px;
+  line-height: 1.7;
+}
+
+.dashboard-two-col {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 22px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+.chart-card {
+  background: white;
+  border-radius: 22px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  box-shadow:
+    0 6px 20px rgba(15,23,42,0.05);
+}
+
+.market-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:14px 0;
+  border-bottom:1px solid var(--border);
+}
+
+.market-item:last-child {
+  border-bottom:none;
+}
+
+.market-green {
+  color:#10B981;
+  font-weight:700;
+}
+
+.market-red {
+  color:#EF4444;
+  font-weight:700;
+}
+
+.insight-banner {
+  background:
+    linear-gradient(
+      135deg,
+      #081B4B,
+      #102A72
+    );
+
+  color:white;
+  border-radius:20px;
+  padding:22px;
+  margin-top:24px;
+  display:flex;
+  align-items:center;
+  gap:18px;
+}
+
+.insight-banner img {
+  width:70px;
+  height:70px;
+  object-fit:contain;
+}
+
+.alloc-row-item {
+  padding: 14px 0;
+}
+
+.hero-card {
+  background: linear-gradient(135deg, #061a3d, #132b78);
+  color: white;
+  border-radius: 22px;
+  padding: 34px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 22px;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.hero-card h1 {
+  font-size: 28px;
+  margin-bottom: 10px;
+}
+
+.hero-card button {
+  background: #18c7a6;
+  color: white;
+  border: none;
+  border-radius: 14px;
+  padding: 14px 24px;
+  font-weight: 700;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.stat-card,
+.panel,
+.bear-take {
+  background: white;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.stat-card h3 {
+  font-size: 26px;
+  margin: 10px 0 4px;
+  color: #0f1f4b;
+}
+
+.stat-card p {
+  color: #64748b;
+  font-size: 14px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.dashboard-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.panel.large {
+  min-height: 340px;
+}
+
+.bear-take {
+  background: #071d49;
+  color: white;
+  margin-top: 18px;
+}
+
+.hero-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-bear {
+  height: 180px;
+  object-fit: contain;
+}
+
+#sidebar-email,
+#sidebar-name,
+#topbar-avatar {
+  cursor: pointer;
+}

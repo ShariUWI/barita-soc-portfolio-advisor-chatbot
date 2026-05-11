@@ -14,1483 +14,3879 @@ const FIREBASE_CONFIG = {
   measurementId: "G-D4E0HQSSFS"
 };
 
-// ─── BACKEND URL — Shar remember to replace with the Render/Railway URL after deploying ───────
-// For local testing: const BACKEND_URL = "http://localhost:5000";
-const BACKEND_URL = "http://localhost:5000";
+const BACKEND_URL = window.location.origin;
 
 // ─── FIREBASE IMPORTS ─────────────────────────────────────────────────────────
-import { initializeApp }                              from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut,
-         GoogleAuthProvider, signInWithPopup,
-         signInWithEmailAndPassword,
-         createUserWithEmailAndPassword,
-         updateProfile, sendPasswordResetEmail }      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc,
-         collection, addDoc, query, orderBy,
-         limit, getDocs, serverTimestamp }            from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 
-const app  = initializeApp(FIREBASE_CONFIG);
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  limit,
+  getDocs,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
-const db   = getFirestore(app);
+const db = getFirestore(app);
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
 const state = {
-  user:        null,
+  user: null,
   firebaseToken: null,
-  answers:     {},
-  qStep:       0,
-  report:      null,
+  answers: {},
+  qStep: 0,
+  qPage: 1,
+  report: null,
   chatHistory: [],
-  currentView: 'dashboard',
-  isRegister:  false,
+  currentView: "dashboard",
+  isRegister: false
 };
 
 // ─── QUESTIONNAIRE DEFINITION ─────────────────────────────────────────────────
-// Each section has: id, title, questions[]
-// Each question: id, text, type (single|multi|text|textarea), options[], conditional?
 const SECTIONS = [
-  // PAGE 1: Profile
   {
-    id: 'profile', title: 'Your Profile',
+    id: "profile",
+    title: "Your Profile",
     questions: [
-      { id: 'first_name', text: 'First Name', type: 'text', placeholder: 'e.g. Jane' },
-      { id: 'last_name',  text: 'Last Name',  type: 'text', placeholder: 'e.g. Smith' },
-      { id: 'age',        text: 'Age',        type: 'text', placeholder: 'e.g. 28' },
-    ],
+      { id: "first_name", text: "First Name", type: "text", placeholder: "e.g. Jane" },
+      { id: "last_name", text: "Last Name", type: "text", placeholder: "e.g. Smith" },
+      { id: "age", text: "Age", type: "text", placeholder: "e.g. 28" }
+    ]
   },
-  // PAGE 2: Background
   {
-    id: 'background', title: 'Your Background',
-    questions: [
-      {
-        id: 'knowledge_level', text: 'How much do you know about investing?', type: 'single',
-        options: ["I'm completely new to investing", 'I have basic knowledge but no real experience', "I've been learning and have some experience", 'I have a lot of investing experience'],
-      },
-      {
-        id: 'employment_status', text: 'What is your employment status?', type: 'single',
-        options: ['Salaried employee', 'Self-employed / business owner', 'Part-time / contract', 'Unemployed', 'Retired'],
-      },
-      {
-        id: 'pay_frequency', text: 'How often do you get paid?', type: 'single',
-        options: ['Monthly', 'Weekly', 'Commission-based', 'Self-employed (irregular)'],
-      },
-    ],
-  },
-  // PAGE 3: Dependents
-  {
-    id: 'dependents', title: 'Financial Dependents',
+    id: "background",
+    title: "Your Background",
     questions: [
       {
-        id: 'dependents', text: 'Do you have financial dependents?', type: 'single',
-        options: ['None', '1-2 children', '3+ children', 'Elderly parents', 'Children + parents', 'Other dependents'],
+        id: "knowledge_level",
+        text: "How much do you know about investing?",
+        type: "single",
+        options: [
+          "I'm completely new to investing",
+          "I have basic knowledge but no real experience",
+          "I've been learning and have some experience",
+          "I have a lot of investing experience"
+        ]
       },
-    ],
+      {
+        id: "employment_status",
+        text: "What is your employment status?",
+        type: "single",
+        options: [
+          "Salaried employee",
+          "Self-employed / business owner",
+          "Part-time / contract",
+          "Unemployed",
+          "Retired"
+        ]
+      },
+      {
+        id: "pay_frequency",
+        text: "How often do you get paid?",
+        type: "single",
+        options: [
+          "Monthly",
+          "Weekly",
+          "Commission-based",
+          "Self-employed (irregular)"
+        ]
+      }
+    ]
   },
-  // PAGE 4: Existing Investments
   {
-    id: 'existing_investments', title: 'Existing Investments',
+    id: "dependents",
+    title: "Financial Dependents",
     questions: [
       {
-        id: 'other_investments', text: 'Do you hold investments or pensions elsewhere?', type: 'multi',
-        hint: 'Select all that apply',
-        options: ['No other investments', 'Local stocks / bonds', 'Pension / NIS', 'Foreign investments', 'Real estate'],
-      },
-    ],
+        id: "dependents",
+        text: "Do you have financial dependents?",
+        type: "single",
+        options: [
+          "None",
+          "1-2 children",
+          "3+ children",
+          "Elderly parents",
+          "Children + parents",
+          "Other dependents"
+        ]
+      }
+    ]
   },
-  // PAGE 5: Tax Residency
   {
-    id: 'tax', title: 'Tax Residency',
+    id: "existing_investments",
+    title: "Existing Investments",
     questions: [
       {
-        id: 'tax_residency', text: 'In which country are you a tax resident?', type: 'multi',
-        hint: 'Select all that apply',
-        options: ['Jamaica only', 'USA', 'UK', 'Canada', 'Other'],
-      },
-    ],
+        id: "other_investments",
+        text: "Do you hold investments or pensions elsewhere?",
+        type: "multi",
+        hint: "Select all that apply",
+        options: [
+          "No other investments",
+          "Local stocks / bonds",
+          "Pension / NIS",
+          "Foreign investments",
+          "Real estate"
+        ]
+      }
+    ]
   },
-  // PAGE 6: Financial Goals
   {
-    id: 'goals', title: 'Financial Goals',
+    id: "tax",
+    title: "Tax Residency",
     questions: [
       {
-        id: 'primary_goal', text: 'What is your primary financial goal?', type: 'single',
-        options: ['Wealth accumulation / growth', 'Retirement planning', 'Education funding', 'Property purchase', 'Income generation', 'Capital preservation', 'Emergency fund building'],
-      },
-      {
-        id: 'goal_priority', text: 'How would you describe the priority of this goal?', type: 'single',
-        options: ['Essential - I must achieve this', 'Aspirational - I would like to achieve this'],
-      },
-      {
-        id: 'withdrawal_time', text: 'Over the next 2 years, how much do you expect to withdraw from this portfolio?', type: 'single',
-        options: ['No withdrawals', 'Less than 10%', '10-25%', 'More than 25%'],
-      },
-    ],
+        id: "tax_residency",
+        text: "In which country are you a tax resident?",
+        type: "multi",
+        hint: "Select all that apply",
+        options: [
+          "Jamaica only",
+          "USA",
+          "UK",
+          "Canada",
+          "Other"
+        ]
+      }
+    ]
   },
-  // PAGE 7: Risk Reaction
   {
-    id: 'risk_reaction', title: 'Risk Reaction',
+    id: "goals",
+    title: "Financial Goals",
     questions: [
       {
-        id: 'drop_reaction', text: 'How would you react if your investment dropped by 20%?', type: 'single',
-        options: ['Sell everything to avoid further losses', 'Sell some to reduce losses', 'Wait for recovery', 'Invest more at lower prices'],
+        id: "primary_goal",
+        text: "What is your primary financial goal?",
+        type: "single",
+        options: [
+          "Wealth accumulation / growth",
+          "Retirement planning",
+          "Education funding",
+          "Property purchase",
+          "Income generation",
+          "Capital preservation",
+          "Emergency fund building"
+        ]
       },
-    ],
+      {
+        id: "goal_priority",
+        text: "How would you describe the priority of this goal?",
+        type: "single",
+        options: [
+          "Essential - I must achieve this",
+          "Aspirational - I would like to achieve this"
+        ]
+      },
+      {
+        id: "withdrawal_time",
+        text: "Over the next 2 years, how much do you expect to withdraw from this portfolio?",
+        type: "single",
+        options: [
+          "No withdrawals",
+          "Less than 10%",
+          "10-25%",
+          "More than 25%"
+        ]
+      }
+    ]
   },
-  // PAGE 8: Risk Profile
   {
-    id: 'risk_profile', title: 'Risk Profile',
+    id: "risk_reaction",
+    title: "Risk Reaction",
     questions: [
       {
-        id: 'risk_relationship', text: 'Which best describes your relationship with investment risk?', type: 'single',
-        options: ["I'm okay with small changes, but big losses stress me", 'I understand ups and downs and stay calm', "I'm comfortable with big risks and see drops as opportunities", 'I worry a lot about losing money'],
-      },
-      {
-        id: 'loss_vs_gain', text: 'Which outcome would upset you more?', type: 'single',
-        options: ['Missing a 20% gain', 'Suffering a 20% loss'],
-      },
-      {
-        id: 'performance_benchmark', text: 'When reviewing your portfolio, what do you mainly compare it to?', type: 'single',
-        options: ['The amount I originally invested', 'The overall increase in value (JMD gains)', 'My expected return', 'A market index', 'The rate of inflation'],
-      },
-      {
-        id: 'max_loss', text: 'What is the maximum annual loss you could tolerate without changing strategy?', type: 'single',
-        options: ['Up to 10%', 'Up to 20%', 'Up to 40%', 'More than 40%'],
-      },
-    ],
+        id: "drop_reaction",
+        text: "How would you react if your investment dropped by 20%?",
+        type: "single",
+        options: [
+          "Sell everything to avoid further losses",
+          "Sell some to reduce losses",
+          "Wait for recovery",
+          "Invest more at lower prices"
+        ]
+      }
+    ]
   },
-  // PAGE 9: Financial Resilience
   {
-    id: 'resilience', title: 'Financial Resilience',
+    id: "risk_profile",
+    title: "Risk Profile",
     questions: [
       {
-        id: 'income_loss_runway', text: 'If you lost your primary income, how long could you maintain your lifestyle without touching investments?', type: 'single',
-        options: ['Less than 3 months', '3-6 months', '6-12 months', '1-2 years', 'More than 2 years'],
+        id: "risk_relationship",
+        text: "Which best describes your relationship with investment risk?",
+        type: "single",
+        options: [
+          "I'm okay with small changes, but big losses stress me",
+          "I understand ups and downs and stay calm",
+          "I'm comfortable with big risks and see drops as opportunities",
+          "I worry a lot about losing money"
+        ]
       },
       {
-        id: 'debt_situation', text: 'What best describes your current debt situation?', type: 'single',
-        options: ['Debt-free', 'Minor debt', 'Moderate debt', 'Significant debt'],
+        id: "loss_vs_gain",
+        text: "Which outcome would upset you more?",
+        type: "single",
+        options: [
+          "Missing a 20% gain",
+          "Suffering a 20% loss"
+        ]
       },
-    ],
+      {
+        id: "performance_benchmark",
+        text: "When reviewing your portfolio, what do you mainly compare it to?",
+        type: "single",
+        options: [
+          "The amount I originally invested",
+          "The overall increase in value (JMD gains)",
+          "My expected return",
+          "A market index",
+          "The rate of inflation"
+        ]
+      },
+      {
+        id: "max_loss",
+        text: "What is the maximum annual loss you could tolerate without changing strategy?",
+        type: "single",
+        options: [
+          "Up to 10%",
+          "Up to 20%",
+          "Up to 40%",
+          "More than 40%"
+        ]
+      }
+    ]
   },
-  // PAGE 10: Currency
   {
-    id: 'currency', title: 'Currency Profile',
+    id: "resilience",
+    title: "Financial Resilience",
     questions: [
       {
-        id: 'earn_currency', text: 'In what currency do you primarily earn?', type: 'single',
-        options: ['JMD only', 'USD only', 'Mostly JMD', 'Mostly USD', 'Equal amounts of JMD and USD'],
+        id: "income_loss_runway",
+        text: "If you lost your primary income, how long could you maintain your lifestyle without touching investments?",
+        type: "single",
+        options: [
+          "Less than 3 months",
+          "3-6 months",
+          "6-12 months",
+          "1-2 years",
+          "More than 2 years"
+        ]
       },
       {
-        id: 'spend_currency', text: 'In what currency do you primarily spend?', type: 'single',
-        options: ['JMD only', 'USD only', 'Mostly JMD', 'Mostly USD', 'Equal amounts of JMD and USD'],
-      },
-      {
-        id: 'usd_liabilities', text: 'Do you have USD-denominated liabilities?', type: 'single',
-        options: ['None', 'Under USD $10K', 'USD $10K-$50K', 'USD $50K-$200K', 'Over USD $200K'],
-      },
-      {
-        id: 'inflation_impact', text: 'How much does JMD inflation affect your cost of living?', type: 'single',
-        options: ['Not sure', 'Minimal', 'Moderate', 'Significant', 'Severe'],
-      },
-    ],
+        id: "debt_situation",
+        text: "What best describes your current debt situation?",
+        type: "single",
+        options: [
+          "Debt-free",
+          "Minor debt",
+          "Moderate debt",
+          "Significant debt"
+        ]
+      }
+    ]
   },
-  // PAGE 11: Portfolio Management
   {
-    id: 'management', title: 'Portfolio Management',
+    id: "currency",
+    title: "Currency Profile",
     questions: [
       {
-        id: 'review_frequency', text: 'How often should your portfolio be reviewed and rebalanced?', type: 'single',
-        options: ['Monthly', 'Quarterly', 'Semi-annually', 'Annually', 'Only when needed'],
+        id: "earn_currency",
+        text: "In what currency do you primarily earn?",
+        type: "single",
+        options: [
+          "JMD only",
+          "USD only",
+          "Mostly JMD",
+          "Mostly USD",
+          "Equal amounts of JMD and USD"
+        ]
       },
       {
-        id: 'market_adjustment', text: 'Are you open to adjusting your portfolio based on market conditions?', type: 'single',
-        options: ['No - keep it fixed', 'Yes - small changes', 'Yes - moderate changes', 'Yes - fully active'],
+        id: "spend_currency",
+        text: "In what currency do you primarily spend?",
+        type: "single",
+        options: [
+          "JMD only",
+          "USD only",
+          "Mostly JMD",
+          "Mostly USD",
+          "Equal amounts of JMD and USD"
+        ]
       },
       {
-        id: 'inflation_protection', text: 'Do you want inflation protection in your portfolio?', type: 'single',
-        options: ['Yes - strong focus', 'Somewhat', 'Not necessary', 'Not sure'],
+        id: "usd_liabilities",
+        text: "Do you have USD-denominated liabilities?",
+        type: "single",
+        options: [
+          "None",
+          "Under USD $10K",
+          "USD $10K-$50K",
+          "USD $50K-$200K",
+          "Over USD $200K"
+        ]
       },
       {
-        id: 'invest_style', text: 'What is your preferred investment style?', type: 'single',
-        options: ['Fully passive', 'Mostly passive', 'Balanced', 'Mostly active', 'Fully active'],
-      },
-      {
-        id: 'involvement_level', text: 'How involved do you want to be in decisions?', type: 'single',
-        options: ['Hands-off', 'Consulted on major changes', 'Approve major decisions', 'Fully involved'],
-      },
-    ],
+        id: "inflation_impact",
+        text: "How much does JMD inflation affect your cost of living?",
+        type: "single",
+        options: [
+          "Not sure",
+          "Minimal",
+          "Moderate",
+          "Significant",
+          "Severe"
+        ]
+      }
+    ]
   },
+  {
+    id: "management",
+    title: "Portfolio Management",
+    questions: [
+      {
+        id: "review_frequency",
+        text: "How often should your portfolio be reviewed and rebalanced?",
+        type: "single",
+        options: [
+          "Monthly",
+          "Quarterly",
+          "Semi-annually",
+          "Annually",
+          "Only when needed"
+        ]
+      },
+      {
+        id: "market_adjustment",
+        text: "Are you open to adjusting your portfolio based on market conditions?",
+        type: "single",
+        options: [
+          "No - keep it fixed",
+          "Yes - small changes",
+          "Yes - moderate changes",
+          "Yes - fully active"
+        ]
+      },
+      {
+        id: "inflation_protection",
+        text: "Do you want inflation protection in your portfolio?",
+        type: "single",
+        options: [
+          "Yes - strong focus",
+          "Somewhat",
+          "Not necessary",
+          "Not sure"
+        ]
+      },
+      {
+        id: "invest_style",
+        text: "What is your preferred investment style?",
+        type: "single",
+        options: [
+          "Fully passive",
+          "Mostly passive",
+          "Balanced",
+          "Mostly active",
+          "Fully active"
+        ]
+      },
+      {
+        id: "involvement_level",
+        text: "How involved do you want to be in decisions?",
+        type: "single",
+        options: [
+          "Hands-off",
+          "Consulted on major changes",
+          "Approve major decisions",
+          "Fully involved"
+        ]
+      }
+    ]
+  }
 ];
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const $  = id => document.getElementById(id);
-const el = (tag, cls = '', html = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
-const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
+// ─── QUESTION FLOW ──────────────────────────────────────────────────────────────
+const QUESTION_FLOW = [
+  { field: "first_name", question: "What's your first name? I like to keep things personal! 🍯", options: null },
+  { field: "last_name", question: "And your last name?", options: null },
+  { field: "age", question: "How old are you? Just the number is fine!", options: null },
+  { field: "knowledge_level", question: "How would you describe your investing experience?", options: ["I'm completely new to investing", "I have basic knowledge but no real experience", "I've been learning and have some experience", "I have a lot of investing experience"] },
+  { field: "primary_goal", question: "What's your #1 financial goal right now?", options: ["Wealth accumulation / growth", "Retirement planning", "Education funding", "Property purchase", "Income generation", "Capital preservation", "Emergency fund building"] },
+  { field: "time_horizon", question: "How many years before you'd need to access this money? A rough estimate is perfect.", options: null },
+  { field: "target_amount", question: "Do you have a specific money target in mind? For example, 'double my money', 'JMD 5 million', or 'not sure'.", options: null },
+  { field: "withdrawal_time", question: "Over the next 2 years, how much of this portfolio might you need to withdraw?", options: ["No withdrawals", "Less than 10%", "10-25%", "More than 25%"] },
+  { field: "drop_reaction", question: "If your portfolio dropped 20% in one month, what would you honestly do? 😬", options: ["Sell everything to avoid further losses", "Sell some to reduce losses", "Wait for recovery", "Invest more at lower prices"] },
+  { field: "risk_comfort", question: "On a scale of 1–10, how much annual drawdown could you stomach before reconsidering your strategy? 1 means very little, 10 means big swings are okay.", options: null },
+  { field: "max_loss", question: "What's the maximum annual loss you could handle without changing your plan?", options: ["Up to 10%", "Up to 20%", "Up to 40%", "More than 40%"] },
+  { field: "sector_view", question: "Do you have a strong view that any sector will outperform? You can say something like 'tech', 'local JMD assets', or 'not sure'.", options: null },
+  { field: "income_loss_runway", question: "If you lost your income tomorrow, how long could you live comfortably without touching investments?", options: ["Less than 3 months", "3-6 months", "6-12 months", "1-2 years", "More than 2 years"] },
+  { field: "debt_situation", question: "How would you describe your current debt situation?", options: ["Debt-free", "Minor debt", "Moderate debt", "Significant debt"] },
+  { field: "earn_currency", question: "What currency do you mainly earn in?", options: ["JMD only", "USD only", "Mostly JMD", "Mostly USD", "Equal amounts of JMD and USD"] },
+  { field: "spend_currency", question: "What currency do you mainly spend in?", options: ["JMD only", "USD only", "Mostly JMD", "Mostly USD", "Equal amounts of JMD and USD"] },
+  { field: "usd_liabilities", question: "Do you have any USD-denominated debts or liabilities?", options: ["None", "Under USD $10K", "USD $10K-$50K", "USD $50K-$200K", "Over USD $200K"] },
+  { field: "inflation_impact", question: "How much does JMD inflation affect your daily costs?", options: ["Not sure", "Minimal", "Moderate", "Significant", "Severe"] },
+  { field: "inflation_protection", question: "Do you want inflation protection built into your portfolio?", options: ["Not sure", "Not necessary", "Somewhat", "Yes - strong focus"] },
+  { field: "invest_style", question: "What's your preferred investing style?", options: ["Fully passive", "Mostly passive", "Balanced", "Mostly active", "Fully active"] },
+  { field: "market_adjustment", question: "If market conditions shifted, would you be open to adjusting your portfolio?", options: ["No - keep it fixed", "Yes - small changes", "Yes - moderate changes", "Yes - fully active"] },
+  { field: "risk_relationship", question: "Which best describes your relationship with investment risk?", options: ["I worry a lot about losing money", "I'm okay with small changes, but big losses stress me", "I understand ups and downs and stay calm", "I'm comfortable with big risks and see drops as opportunities"] },
+  { field: "loss_vs_gain", question: "Which outcome would upset you more?", options: ["Missing a 20% gain", "Suffering a 20% loss"] },
+  { field: "performance_benchmark", question: "When checking your portfolio, what do you mainly compare it against?", options: ["The amount I originally invested", "The overall increase in value (JMD gains)", "My expected return", "A market index", "The rate of inflation"] }
+];
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+
+const el = (tag, cls = "", html = "") => {
+  const e = document.createElement(tag);
+
+  if (cls) {
+    e.className = cls;
+  }
+
+  if (html) {
+    e.innerHTML = html;
+  }
+
+  return e;
+};
+
+const esc = s => String(s ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;");
+
+  
 function switchView(view) {
   state.currentView = view;
-  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === view));
-  const titles = { dashboard: 'Dashboard', questionnaire: 'Questionnaire', portfolio: 'My Portfolio', advisor: '🐻 Barita', reports: 'Reports' };
-  $('topbar-title').textContent = titles[view] || view;
+
+  document
+    .querySelectorAll(".nav-item")
+    .forEach(b => b.classList.toggle("active", b.dataset.view === view));
+
+  const titles = {
+    dashboard: "Dashboard",
+    portfolio: "My Portfolio",
+    advisor: "🐻 AI Chatbot",
+    reports: "Reports",
+    profile: "Profile"
+  };
+
+  $("topbar-title").textContent = titles[view] || view;
+
   renderView(view);
+
+  setTimeout(maybeRenderMiniAlloc, 0);
 }
 
-// ─── AUTH ──────────────────────────────────────────────────────────────────────
+// ─── SESSION STORAGE HELPERS ─────────────────────────────────────────────────
+function getUserStorageKeys() {
+
+  const uid = state.user?.uid || "guest";
+
+  return {
+    report: `barita_report_${uid}`,
+    answers: `barita_answers_${uid}`,
+    chatHistory: `barita_chat_history_${uid}`
+  };
+}
+
+function saveLocalSession() {
+
+  if (!state.user) return;
+
+  const keys = getUserStorageKeys();
+
+  if (state.report) {
+    sessionStorage.setItem(
+      keys.report,
+      JSON.stringify(state.report)
+    );
+  }
+
+  if (state.answers) {
+    sessionStorage.setItem(
+      keys.answers,
+      JSON.stringify(state.answers)
+    );
+  }
+
+  if (state.chatHistory) {
+    sessionStorage.setItem(
+      keys.chatHistory,
+      JSON.stringify(state.chatHistory)
+    );
+  }
+}
+
+function loadLocalSession() {
+
+  if (!state.user) return;
+
+  const keys = getUserStorageKeys();
+
+  const savedReport = sessionStorage.getItem(keys.report);
+  const savedAnswers = sessionStorage.getItem(keys.answers);
+  const savedChat = sessionStorage.getItem(keys.chatHistory);
+
+  if (savedReport) {
+    state.report = JSON.parse(savedReport);
+  }
+
+  if (savedAnswers) {
+    state.answers = JSON.parse(savedAnswers);
+  }
+
+  if (savedChat) {
+    state.chatHistory = JSON.parse(savedChat);
+  }
+}
+
+// ─── FIRESTORE SESSION LOADING ───────────────────────────────────────────────
+async function loadSession() {
+
+  loadLocalSession();
+
+  try {
+
+    if (!state.user || !db) return;
+
+    const docRef = doc(
+      db,
+      "sessions",
+      state.user.uid
+    );
+
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+
+      const data = docSnap.data();
+
+      if (data.report) {
+        state.report = data.report;
+      }
+
+      if (data.answers) {
+        state.answers = data.answers;
+      }
+
+      if (data.chatHistory) {
+        state.chatHistory = data.chatHistory;
+      }
+    }
+
+  } catch (err) {
+
+    console.warn(
+      "Firestore session load skipped:",
+      err.message
+    );
+  }
+}
+
+// ─── SAVE SESSION ────────────────────────────────────────────────────────────
+async function saveSession() {
+
+  try {
+
+    saveLocalSession();
+
+    if (!state.user || !db) return;
+
+    await setDoc(
+      doc(db, "sessions", state.user.uid),
+      {
+        report: state.report || null,
+        answers: state.answers || {},
+        chatHistory: state.chatHistory || [],
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+
+  } catch (err) {
+
+    console.warn(
+      "Firestore save failed:",
+      err.message
+    );
+  }
+}
+
+// ─── AUTH STATE ──────────────────────────────────────────────────────────────
 onAuthStateChanged(auth, async user => {
   if (user) {
     state.user = user;
     state.firebaseToken = await user.getIdToken();
-    // Refresh token periodically
-    setInterval(async () => { state.firebaseToken = await user.getIdToken(true); }, 50 * 60 * 1000);
 
-    $('screen-login').classList.add('hidden');
-    $('screen-app').classList.remove('hidden');
+    setInterval(async () => {
+      state.firebaseToken = await user.getIdToken(true);
+    }, 50 * 60 * 1000);
 
-    const name = user.displayName || user.email.split('@')[0];
+    document.getElementById("screen-login").classList.add("hidden");
+    document.getElementById("screen-app").classList.remove("hidden");
+
+    const name = user.displayName || user.email.split("@")[0];
     const initial = name[0].toUpperCase();
-    $('sidebar-name').textContent  = name;
-    $('sidebar-email').textContent = user.email;
-    $('sidebar-avatar').textContent = initial;
-    $('topbar-avatar').textContent  = initial;
+
+    document.getElementById("sidebar-name").textContent = name;
+    document.getElementById("sidebar-email").textContent = user.email;
+    document.getElementById("sidebar-avatar").textContent = initial;
+    document.getElementById("topbar-avatar").textContent = initial;
+
+    document.getElementById("sidebar-email")?.addEventListener("click", () => {
+  switchView("profile");
+});
+
+    document.getElementById("sidebar-name")?.addEventListener("click", () => {
+      switchView("profile");
+    });
+
+    document.getElementById("topbar-avatar")?.addEventListener("click", () => {
+      switchView("profile");
+    });
 
     await loadSession();
-    switchView('dashboard');
+
+    switchView("dashboard");
   } else {
     state.user = null;
-    $('screen-app').classList.add('hidden');
-    $('screen-login').classList.remove('hidden');
+
+    document.getElementById("screen-app").classList.add("hidden");
+    document.getElementById("screen-login").classList.remove("hidden");
   }
 });
 
-function setLoginError(msg) { $('login-error-text').textContent = msg; $('login-error').classList.remove('hidden'); }
-function clearLoginError()  { $('login-error').classList.add('hidden'); }
+// ─── GOOGLE LOGIN ────────────────────────────────────────────────────────────
+window.googleLogin = async () => {
 
-async function handleGoogleSignIn() {
-  clearLoginError();
   try {
-    await signInWithPopup(auth, new GoogleAuthProvider());
-  } catch(e) {
-    if (e.code !== 'auth/popup-closed-by-user') setLoginError('Google sign-in failed: ' + e.message);
+
+    const provider = new GoogleAuthProvider();
+
+    await signInWithPopup(auth, provider);
+
+  } catch (err) {
+
+    alert(err.message);
   }
-}
+};
 
-async function handleEmailAuth() {
-  clearLoginError();
-  const email = $('input-email').value.trim();
-  const pass  = $('input-password').value;
-  if (!email || !pass) { setLoginError('Please enter email and password.'); return; }
-  if (pass.length < 6) { setLoginError('Password must be at least 6 characters.'); return; }
+// ─── EMAIL LOGIN ─────────────────────────────────────────────────────────────
+window.emailAuth = async () => {
 
-  $('btn-email-auth').disabled = true;
-  $('btn-email-text').textContent = state.isRegister ? 'Creating…' : 'Signing in…';
-  $('btn-email-arrow').classList.add('hidden');
-  $('btn-email-spinner').classList.remove('hidden');
+  const email = $("email").value.trim();
+  const password = $("password").value.trim();
+
+  if (!email || !password) {
+    return alert("Please fill in all fields.");
+  }
 
   try {
+
     if (state.isRegister) {
-      const name    = $('input-name').value.trim();
-      const confirm = $('input-confirm').value;
-      if (!name)          { setLoginError('Please enter your full name.');    throw new Error(); }
-      if (pass !== confirm){ setLoginError('Passwords do not match.');         throw new Error(); }
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      await updateProfile(cred.user, { displayName: name });
+      const confirmPassword = $("confirm-password")?.value.trim();
+
+      if (password !== confirmPassword) {
+      return alert("Passwords do not match.");
+      }
+      const cred =
+        await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
+
+      const name = $("full-name")?.value.trim() || "";
+
+      if (name) {
+        await updateProfile(cred.user, {
+          displayName: name
+        });
+      }
+
     } else {
-      await signInWithEmailAndPassword(auth, email, pass);
+
+      await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
     }
-  } catch(e) {
-    const msgs = {
-      'auth/user-not-found':       'No account found with this email.',
-      'auth/wrong-password':       'Incorrect password.',
-      'auth/email-already-in-use': 'This email is already registered.',
-      'auth/invalid-email':        'Please enter a valid email.',
-      'auth/too-many-requests':    'Too many attempts — please wait.',
-    };
-    if (e.code) setLoginError(msgs[e.code] || e.message);
-    $('btn-email-auth').disabled = false;
-    $('btn-email-text').textContent = state.isRegister ? 'Create Account' : 'Sign In';
-    $('btn-email-arrow').classList.remove('hidden');
-    $('btn-email-spinner').classList.add('hidden');
+
+  } catch (err) {
+
+    alert(err.message);
   }
-}
+};
 
-function toggleRegisterMode() {
+// ─── TOGGLE REGISTER ─────────────────────────────────────────────────────────
+window.toggleRegister = () => {
   state.isRegister = !state.isRegister;
-  $('register-fields').classList.toggle('hidden', !state.isRegister);
-  $('register-confirm').classList.toggle('hidden', !state.isRegister);
-  $('auth-title').textContent     = state.isRegister ? 'Create your account' : 'Sign in to your account';
-  $('auth-sub').textContent       = state.isRegister ? 'Join the Barita SOC 2026 platform.' : 'Welcome back. Enter your details below.';
-  $('toggle-label').textContent   = state.isRegister ? 'Already have an account?' : "Don't have an account?";
-  $('btn-toggle-mode').textContent= state.isRegister ? 'Sign in instead' : 'Create one';
-  $('btn-email-text').textContent = state.isRegister ? 'Create Account' : 'Sign In';
-  clearLoginError();
-}
 
+  $("register-fields").classList.toggle("hidden", !state.isRegister);
+  $("register-confirm").classList.toggle("hidden", !state.isRegister);
+
+  $("auth-title").textContent =
+    state.isRegister ? "Create your account" : "Sign in to your account";
+
+  $("auth-sub").textContent =
+    state.isRegister
+      ? "Join the Barita SOC 2026 platform."
+      : "Welcome back. Enter your details below.";
+
+  $("toggle-label").textContent =
+    state.isRegister ? "Already have an account?" : "Don't have an account?";
+
+  $("btn-toggle-mode").textContent =
+    state.isRegister ? "Sign in instead" : "Create one";
+
+  $("btn-email-text").textContent =
+    state.isRegister ? "Create Account" : "Sign In";
+};
+
+// ─── PASSWORD RESET ──────────────────────────────────────────────────────────
+window.resetPassword = async () => {
+
+  const email = $("email").value.trim();
+
+  if (!email) {
+    return alert("Enter your email first.");
+  }
+
+  try {
+
+    await sendPasswordResetEmail(auth, email);
+
+    alert(
+      "Password reset email sent."
+    );
+
+  } catch (err) {
+
+    alert(err.message);
+  }
+};
+
+// ─── SIGN OUT ────────────────────────────────────────────────────────────────
 window.handleSignOut = async () => {
-  state.answers = {}; state.report = null; state.chatHistory = [];
+
+  const keys = getUserStorageKeys();
+
+  sessionStorage.removeItem(keys.report);
+  sessionStorage.removeItem(keys.answers);
+  sessionStorage.removeItem(keys.chatHistory);
+
+  localStorage.removeItem(keys.report);
+  localStorage.removeItem(keys.answers);
+  localStorage.removeItem(keys.chatHistory);
+
+  sessionStorage.removeItem("barita_report");
+  sessionStorage.removeItem("barita_answers");
+
+  localStorage.removeItem("barita_report");
+  localStorage.removeItem("barita_answers");
+
+  state.answers = {};
+  state.report = null;
+  state.chatHistory = [];
+  state.qStep = 0;
+
   await signOut(auth);
 };
 
-// ─── FIRESTORE ─────────────────────────────────────────────────────────────────
-async function saveSession() {
-  if (!state.user) return;
-  try {
-    await setDoc(doc(db, 'sessions', state.user.uid), {
-      answers:   state.answers,
-      report:    state.report ? { profile: state.report.profile, metrics: state.report.metrics, profile_label: state.report.profile_label } : null,
-      updatedAt: serverTimestamp(),
-    });
-  } catch(e) { console.warn('Save failed:', e.message); }
-}
-
-async function loadSession() {
-  if (!state.user) return;
-  try {
-    const snap = await getDoc(doc(db, 'sessions', state.user.uid));
-    if (snap.exists()) {
-      const d = snap.data();
-      if (d.answers) state.answers = d.answers;
-      if (d.report)  state.report  = d.report;
-    }
-  } catch(e) { console.warn('Load failed:', e.message); }
-}
-
-async function loadReportHistory() {
-  if (!state.user) return [];
-  try {
-    const q    = query(collection(db, 'users', state.user.uid, 'reports'), orderBy('createdAt','desc'), limit(10));
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch(e) { return []; }
-}
-
-// ─── BACKEND CALLS ─────────────────────────────────────────────────────────────
-async function callBackend(endpoint, body) {
-  const token = state.firebaseToken || await state.user.getIdToken();
-  const res   = await fetch(`${BACKEND_URL}${endpoint}`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body:    JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`Backend error ${res.status}: ${await res.text()}`);
-  return res.json();
-}
-
-async function downloadPDF(reportId) {
-  const token = state.firebaseToken || await state.user.getIdToken();
-  const res   = await fetch(`${BACKEND_URL}/generate_report`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body:    JSON.stringify({ answers: state.answers, report: state.report, report_id: reportId }),
-  });
-  if (!res.ok) { alert('Failed to generate PDF. Please try again.'); return; }
-  const blob = await res.blob();
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  const name = state.user?.displayName || 'Client';
-  a.href = url; a.download = `Barita_Portfolio_Report_${name.replace(/\s+/g,'_')}.pdf`;
-  a.click(); URL.revokeObjectURL(url);
-}
-
-// ─── VIEWS ────────────────────────────────────────────────────────────────────
+// ─── RENDER MAIN VIEWS ───────────────────────────────────────────────────────
 function renderView(view) {
-  const area = $('view-area');
-  area.innerHTML = '';
-  if      (view === 'dashboard')     renderDashboard(area);
-  else if (view === 'questionnaire') renderQuestionnaireView(area);
-  else if (view === 'portfolio')     renderPortfolioView(area);
-  else if (view === 'advisor')       renderAdvisorView(area);
-  else if (view === 'reports')       renderReportsView(area);
+  const mount = document.getElementById("view-area");
+
+  if (!mount) return;
+
+  mount.innerHTML = "";
+
+  if (view === "dashboard") {
+    renderDashboard(mount);
+    setTimeout(drawDashboardCharts, 0);
+  } else if (view === "portfolio") {
+    renderPortfolio(mount);
+  } else if (view === "advisor") {
+    renderAdvisor(mount);
+  } else if (view === "reports") {
+    renderReports(mount);
+  } else if (view === "profile") {
+  renderProfile(mount);
+}}
+
+// ─── BACKEND CALLS ───────────────────────────────────────────────────────────
+async function callBackend(endpoint, payload = {}) {
+
+  const token =
+    state.firebaseToken ||
+    await state.user.getIdToken();
+
+  const res = await fetch(
+    `${BACKEND_URL}${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`
+      },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      await res.text()
+    );
+  }
+
+  return await res.json();
 }
 
-// ── DASHBOARD ──
-function renderDashboard(area) {
-  const name    = state.user?.displayName || state.user?.email?.split('@')[0] || 'there';
-  const profile = state.report?.profile || null;
-  const label   = state.report?.profile_label || null;
-  const done    = Object.keys(state.answers).length > 5;
 
-  area.innerHTML = `
-    <!-- Welcome banner -->
-    <div class="dash-welcome">
-      <div>
-        <div class="dash-welcome-h">Welcome back, ${esc(name.split(' ')[0])} 👋</div>
-        <p class="dash-welcome-p">${done
-          ? `Your <strong style="color:var(--teal-light)">${esc(profile)}</strong> portfolio is ready. View your allocation and download your report.`
-          : 'Complete the risk profiling questionnaire to get your personalised portfolio recommendation.'
-        }</p>
-      </div>
-      <button class="dash-welcome-btn" onclick="${done ? "switchView('portfolio')" : "openQuestionnaire()"}">
-        ${done ? '📊 View Portfolio' : '📋 Start Questionnaire'}
-      </button>
-    </div>
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+function renderDashboard(mount) {
 
-    <!-- Stat cards -->
-    <div class="stat-grid">
-      <div class="stat-card">
-        <div class="stat-card-label"><div class="stat-card-icon teal">📋</div>Questionnaire</div>
-        <div class="stat-card-val">${done ? '100%' : Math.round((Object.keys(state.answers).length / 15) * 100) + '%'}</div>
-        <div class="stat-card-sub">${done ? 'Completed' : 'In progress'}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-label"><div class="stat-card-icon teal">🎯</div>Risk Profile</div>
-        <div class="stat-card-val" style="font-size:18px">${profile ? `<span class="profile-badge ${profile.toLowerCase()}">${profile}</span>` : '—'}</div>
-        <div class="stat-card-sub">${label || 'Not yet assessed'}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-label"><div class="stat-card-icon green">📈</div>Expected Return</div>
-        <div class="stat-card-val ${profile ? 'green' : ''}">${state.report?.metrics?.expected_return || '—'}</div>
-        <div class="stat-card-sub">Annualised estimate</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-card-label"><div class="stat-card-icon blue">📄</div>Reports</div>
-        <div class="stat-card-val">${done ? '1' : '0'}</div>
-        <div class="stat-card-sub">${done ? '<span class="badge-up">↑ Ready to download</span>' : 'Complete questionnaire first'}</div>
-      </div>
-    </div>
+  const hasReport =
+    !!state.report?.allocations?.length;
 
-    ${done && state.report?.allocations ? renderMiniAllocation() : `
-    <div class="panel">
-      <div class="empty-state">
-        <div class="empty-icon">📋</div>
-        <div class="empty-h">Start Your Risk Profile</div>
-        <p class="empty-p">Answer 12 sections about your goals, risk tolerance, and financial situation to get a personalised portfolio.</p>
-        <button class="btn-action" onclick="openQuestionnaire()">Begin Questionnaire →</button>
-      </div>
-    </div>
-    `}
-  `;
-}
+  const name =
+    state.user?.displayName?.split(" ")[0] ||
+    "there";
 
-function renderMiniAllocation() {
-  const allocs = state.report.allocations || [];
-  return `
-    <div class="three-col">
-      <div class="panel">
-        <div class="panel-header">
-          <div><div class="panel-title">Portfolio Allocation</div><div class="panel-sub">Recommended asset mix</div></div>
-          <button class="btn-dl" onclick="switchView('portfolio')">View full →</button>
+  const profile =
+    state.report?.behavioral_profile ||
+    state.report?.profile ||
+    "—";
+
+  const metrics =
+    state.report?.metrics || {};
+
+  const mc = getMonteCarlo();
+
+  mount.innerHTML = `
+      <section class="hero-card">
+
+        <div class="hero-text">
+          <h1>
+            Welcome back, ${esc(name)} 👋
+          </h1>
+
+          <p>
+            ${
+              hasReport
+                ? `Your <strong>${esc(profile)}</strong> portfolio is live and actively optimised using Monte Carlo simulation, MVO, HRP and diversification analytics.`
+                : `Start building your AI-powered investment portfolio with Barita Bear.`
+            }
+          </p>
+
+          <button
+            class="hero-btn"
+            onclick="switchView('${hasReport ? "portfolio" : "advisor"}')"
+          >
+            ${hasReport ? "📊 Open Portfolio" : "🐻 Start AI Chatbot"}
+          </button>
         </div>
-        <div class="panel-body">
-          <div class="alloc-table" id="mini-alloc"></div>
+
+        <img
+          src="images/barita-bear.png"
+          class="hero-bear"
+        />
+
+      </section>
+
+      <section class="stat-grid">
+
+        <div class="stat-card">
+          <div class="stat-card-label">
+            📈 Expected Return
+          </div>
+
+          <div class="stat-card-val" style="color:var(--green)">
+            ${metrics.expected_return || "—"}
+          </div>
+
+          <div class="stat-card-sub">
+            Annualised estimate
+          </div>
         </div>
-      </div>
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">Performance Metrics</div></div>
-        <div class="panel-body">
-          ${renderMetrics()}
+
+        <div class="stat-card">
+          <div class="stat-card-label">
+            🎯 Risk Profile
+          </div>
+
+          <div class="stat-card-val" style="font-size:18px">
+            ${
+              hasReport
+                ? `<span class="profile-badge ${String(profile).toLowerCase()}">${esc(profile)}</span>`
+                : "—"
+            }
+          </div>
+
+          <div class="stat-card-sub">
+            ${esc(state.report?.confidence?.label || "Not yet assessed")}
+          </div>
         </div>
-      </div>
-    </div>
-  `;
+
+        <div class="stat-card">
+          <div class="stat-card-label">
+            🎲 Goal Probability
+          </div>
+
+          <div class="stat-card-val" style="color:var(--teal)">
+            ${
+              mc.prob_goal !== undefined
+                ? mc.prob_goal + "%"
+                : "—"
+            }
+          </div>
+
+          <div class="stat-card-sub">
+            Monte Carlo simulation
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-label">
+            ⚡ Sharpe Ratio
+          </div>
+
+          <div class="stat-card-val" style="color:#8B5CF6">
+            ${metrics.sharpe_ratio || "—"}
+          </div>
+
+          <div class="stat-card-sub">
+            Risk-adjusted return
+          </div>
+        </div>
+
+      </section>
+
+      <section class="dashboard-two-col">
+
+        <div class="chart-card">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">
+                📊 Portfolio Allocation
+              </div>
+
+              <div class="panel-sub">
+                Where your money is going
+              </div>
+            </div>
+          </div>
+
+          <div
+            style="
+              height:320px;
+              position:relative;
+              margin-top:20px;
+            "
+          >
+            <canvas id="dashboard-donut"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">
+                📌 Market Snapshot
+              </div>
+
+              <div class="panel-sub">
+                Portfolio health indicators
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:10px">
+
+            <div class="market-item">
+              <span>Portfolio Volatility</span>
+              <span class="market-red">
+                ${metrics.volatility || "—"}
+              </span>
+            </div>
+
+            <div class="market-item">
+              <span>Expected Return</span>
+              <span class="market-green">
+                ${metrics.expected_return || "—"}
+              </span>
+            </div>
+
+            <div class="market-item">
+              <span>Goal Achievement</span>
+              <span class="market-green">
+                ${
+                  mc.prob_goal !== undefined
+                    ? mc.prob_goal + "%"
+                    : "—"
+                }
+              </span>
+            </div>
+
+            <div class="market-item">
+              <span>Risk Strategy</span>
+              <span>
+                ${esc(profile)}
+              </span>
+            </div>
+
+          </div>
+
+          <div class="insight-banner">
+            <div style="font-size:48px">
+              🐻
+            </div>
+
+            <div>
+              <div style="font-weight:800;font-size:16px;margin-bottom:6px">
+                Barita Bear Insight
+              </div>
+
+              <div style="font-size:13px;line-height:1.7;color:rgba(255,255,255,.82)">
+                ${
+                  profile === "Conservative"
+                    ? "Your portfolio prioritises stability and downside protection."
+                    : profile === "Aggressive"
+                    ? "Your allocation focuses on long-term capital growth."
+                    : "Your portfolio balances growth potential with risk control."
+                }
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+      ${
+        hasReport
+          ? renderDashboardPortfolioPreview()
+          : `
+            <section class="panel">
+              <div class="empty-state">
+                <div class="empty-icon">🐻</div>
+
+                <div class="empty-h">
+                  Start Your AI Profiling Chat
+                </div>
+
+                <p class="empty-p">
+                  Barita Bear will build your personalised investment portfolio step-by-step.
+                </p>
+
+                <button
+                  class="btn-action"
+                  onclick="switchView('advisor')"
+                >
+                  Start AI Chatbot →
+                </button>
+              </div>
+            </section>
+          `
+      }
+    `;
 }
 
-function renderMetrics() {
-  const m = state.report?.metrics || {};
-  return `
-    <div style="display:flex;flex-direction:column;gap:14px">
-      <div><div class="stat-card-label">Expected Return</div><div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--green)">${m.expected_return || '—'}</div></div>
-      <div class="divider"></div>
-      <div><div class="stat-card-label">Volatility</div><div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--red)">${m.volatility || '—'}</div></div>
-      <div class="divider"></div>
-      <div><div class="stat-card-label">Sharpe Ratio</div><div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--teal)">${m.sharpe_ratio || '—'}</div></div>
-    </div>
-  `;
-}
+function drawDashboardCharts() {
+  const donut = document.getElementById("dashboard-donut");
 
-// ── QUESTIONNAIRE VIEW (just a prompt to open modal) ──
-function renderQuestionnaireView(area) {
-  const done = Object.keys(state.answers).length > 5;
-  area.innerHTML = `
-    <div class="panel" style="max-width:640px;margin:0 auto">
-      <div class="panel-header"><div class="panel-title">Investment Risk Profiling Questionnaire</div></div>
-      <div class="panel-body">
-        <p style="font-size:14px;color:var(--text-muted);line-height:1.7;margin-bottom:20px">
-          Understanding your risk profile will help us make investment recommendations that are suitable for you.
-          This covers 12 sections: experience, goals, time horizon, risk tolerance, financial situation, liquidity,
-          income needs, currency exposure, economic sensitivities, cost sensitivity, asset restrictions, and investment style.
-        </p>
-        ${done ? `
-          <div style="background:var(--green-bg);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:14px 18px;margin-bottom:20px;font-size:14px;color:var(--green);font-weight:500">
-            ✓ Questionnaire completed. Your portfolio has been generated.
-          </div>` : ''}
-        <button class="btn-action" onclick="openQuestionnaire()">
-          ${done ? '✏️ Retake Questionnaire' : '📋 Begin Questionnaire →'}
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-// ── PORTFOLIO VIEW ──
-function renderPortfolioView(area) {
-  if (!state.report || !state.report.allocations) {
-    area.innerHTML = `
-      <div class="panel">
-        <div class="empty-state">
-          <div class="empty-icon">📊</div>
-          <div class="empty-h">No Portfolio Yet</div>
-          <p class="empty-p">Complete the questionnaire to generate your personalised portfolio.</p>
-          <button class="btn-action" onclick="openQuestionnaire()">Start Questionnaire →</button>
-        </div>
-      </div>`;
+  if (!donut || typeof Chart === "undefined") {
     return;
   }
 
-  const { profile, profile_label, allocations, metrics, risk_breakdown } = state.report;
-  const name = state.user?.displayName?.split(' ')[0] || 'Investor';
+  const allocations = state.report?.allocations || [];
 
-  // Simplified explanations for metrics
-  const metaExplain = {
-    expected_return: 'This is the average annual growth we expect your money to make. For example, if you invest $100,000 and the expected return is 8%, you could expect roughly $8,000 in growth per year.',
-    volatility: 'This measures how much your portfolio value might go up or down on any given year. A lower number means a smoother ride; a higher number means bigger swings — but also bigger potential gains.',
-    sharpe_ratio: 'This tells you how much reward you are getting for the risk you are taking. A higher number is better. Above 1.0 is considered good — it means the returns are worth the risk.'
-  };
+  if (!allocations.length) {
+    return;
+  }
 
-  // Risk-o-meter level
-  const riskLevels = { conservative: 1, moderate: 2, aggressive: 3 };
-  const riskLevel = riskLevels[profile?.toLowerCase()] || 2;
-  const riskColors = { conservative: '#10B981', moderate: '#F59E0B', aggressive: '#EF4444' };
-  const riskColor = riskColors[profile?.toLowerCase()] || '#F59E0B';
-  const riskDescriptions = {
-    conservative: 'You prefer safety and stability. Your portfolio focuses on protecting what you have while earning steady, predictable returns. Think of it like keeping your money in a very well-managed savings plan.',
-    moderate: 'You are comfortable with some ups and downs in exchange for better long-term growth. Your portfolio balances safety and growth - like a mix of a savings account and stocks.',
-    aggressive: 'You are focused on maximum long-term growth and can handle short-term drops without panic. Your portfolio takes more risk for the chance of higher rewards over time.'
-  };
-
-  // Simplified asset category descriptions
-  const categoryDescriptions = {
-    'Cash':         '💵 Think of this like a high-interest savings account. Very safe, easy to access, but lower returns.',
-    'Fixed Income': '🏛️ These are loans you give to governments or companies. They pay you regular interest - like a steady paycheck from your investment.',
-    'Equity':       '📈 These are small ownership stakes in companies. They can grow a lot over time but may drop in the short term.',
-    'Real Estate':  '🏠 Investing in property through a fund. Earns rental-style income and tends to protect against inflation.',
-    'Alternatives': '🎯 Non-traditional investments like hedge funds or private assets that behave differently from stocks and bonds — great for diversification.'
-  };
-
-  // Build superclass grouping
-  const superGroups = {};
-  allocations.forEach(a => {
-    const sc = a.superClass || a.asset_class || a['class'] || 'Other';
-    if (!superGroups[sc]) superGroups[sc] = { total: 0, items: [] };
-    superGroups[sc].total += parseFloat(a.pct) || 0;
-    superGroups[sc].items.push(a);
+  new Chart(donut.getContext("2d"), {
+    type: "doughnut",
+    data: {
+      labels: allocations.map(a => a.label || a.ticker),
+      datasets: [
+        {
+          data: allocations.map(a => Number(a.pct || 0)),
+          backgroundColor: allocations.map(a => a.color || "#0BB8A9"),
+          borderWidth: 0,
+          hoverOffset: 8
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right"
+        }
+      }
+    }
   });
+}
 
-  const chartColors = ['#0BB8A9','#3B82F6','#F59E0B','#10B981','#EF4444','#8B5CF6','#EC4899','#06B6D4','#84CC16','#F97316','#6366F1','#14B8A6'];
 
-  area.innerHTML = `
-    <!-- Header -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
-      <div>
-        <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px">
-          ${esc(name)}'s Investment Portfolio
-          <span class="profile-badge ${profile.toLowerCase()}" style="margin-left:10px;font-size:13px">${esc(profile)}</span>
-        </h2>
-        <p style="font-size:13px;color:var(--text-muted)">${esc(profile_label || 'Personalised portfolio based on your risk profile')}</p>
+function renderDashboardPortfolioPreview() {
+
+  const allocations =
+    state.report?.allocations || [];
+
+  const metrics =
+    state.report?.metrics || {};
+
+  const method =
+    metrics.optimization_method ||
+    metrics.mvo_strategy ||
+    state.report?.mvo_strategy ||
+    "Optimised";
+
+  const mc = getMonteCarlo();
+
+  const topRows = allocations
+    .slice(0, 7)
+    .map(asset => `
+      <div class="alloc-row-item">
+        <div
+          class="alloc-dot"
+          style="background:${asset.color || "#0BB8A9"}"
+        ></div>
+
+        <div style="flex:1;min-width:0">
+          <div class="alloc-name">
+            ${esc(asset.label || asset.ticker || "Asset")}
+          </div>
+
+          <div class="alloc-ticker">
+            ${esc(asset.ticker || "")} · ${esc(asset.class || "Asset")}
+          </div>
+        </div>
+
+        <div class="alloc-bar-outer">
+          <div
+            class="alloc-bar-inner"
+            style="width:${Number(asset.pct || 0)}%;background:${asset.color || "#0BB8A9"}"
+          ></div>
+        </div>
+
+        <div class="alloc-pct">
+          ${pctFmt(asset.pct)}
+        </div>
       </div>
-      <button class="btn-dl" id="btn-dl-main" style="padding:10px 22px;font-size:13px">⬇ Download Full Report</button>
-    </div>
+    `)
+    .join("");
 
-    <!-- SECTION 1: What This Means For You -->
-    <div class="panel" style="margin-bottom:20px;border-left:4px solid ${riskColor}">
-      <div class="panel-header">
-        <div><div class="panel-title">🙋 What Does This Mean For You?</div><div class="panel-sub">Plain English explanation of your portfolio</div></div>
-      </div>
-      <div class="panel-body">
-        <p style="font-size:15px;line-height:1.75;color:var(--text)">${riskDescriptions[profile?.toLowerCase()] || ''}</p>
-      </div>
-    </div>
-
-    <!-- SECTION 2: Risk-O-Meter + Key Stats -->
-    <div class="two-col" style="margin-bottom:20px">
-
-      <!-- Risk-O-Meter -->
+  return `
+    <section class="three-col">
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">⚡ Your Risk Level</div></div>
-        <div class="panel-body" style="text-align:center">
-          <div style="position:relative;margin:0 auto 16px;width:200px;height:110px;overflow:hidden">
-            <canvas id="risk-gauge" width="200" height="110"></canvas>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              Where Your Money Is Going
+            </div>
+            <div class="panel-sub">
+              Real allocation returned from /analyse
+            </div>
           </div>
-          <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:${riskColor};margin-bottom:6px">${esc(profile)}</div>
-          <div style="font-size:13px;color:var(--text-muted);line-height:1.6">
-            ${riskLevel === 1 ? 'Low risk · Steady &amp; stable' : riskLevel === 2 ? 'Medium risk · Balanced growth' : 'Higher risk · Maximum growth potential'}
-          </div>
-          <div style="display:flex;justify-content:space-between;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">CONSERVATIVE</div><div style="width:12px;height:12px;border-radius:50%;background:#10B981;margin:0 auto"></div></div>
-            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">MODERATE</div><div style="width:12px;height:12px;border-radius:50%;background:#F59E0B;margin:0 auto"></div></div>
-            <div style="text-align:center"><div style="font-size:11px;color:var(--text-faint);margin-bottom:4px">AGGRESSIVE</div><div style="width:12px;height:12px;border-radius:50%;background:#EF4444;margin:0 auto"></div></div>
+
+          <button class="btn-dl" onclick="switchView('portfolio')">
+            View full →
+          </button>
+        </div>
+
+        <div class="panel-body">
+          <div class="alloc-table">
+            ${topRows}
           </div>
         </div>
       </div>
 
-      <!-- Key Metrics with tooltips -->
       <div class="panel">
-        <div class="panel-header"><div class="panel-title">📊 Key Numbers</div><div class="panel-sub">Hover each metric to learn what it means</div></div>
-        <div class="panel-body" style="display:flex;flex-direction:column;gap:0">
-          ${[
-            { key: 'expected_return', label: 'Expected Annual Return', val: metrics.expected_return, color: 'var(--green)', icon: '📈' },
-            { key: 'volatility',      label: 'Volatility (Risk Level)', val: metrics.volatility,      color: 'var(--red)',   icon: '〰️' },
-            { key: 'sharpe_ratio',    label: 'Sharpe Ratio',            val: metrics.sharpe_ratio,    color: 'var(--teal)',  icon: '⚖️' },
-          ].map((m, i) => `
-            <div class="metric-tooltip-wrap" style="padding:14px 0;${i < 2 ? 'border-bottom:1px solid var(--border);' : ''}position:relative;cursor:help"
-                 onmouseenter="this.querySelector('.metric-tip').style.display='block'"
-                 onmouseleave="this.querySelector('.metric-tip').style.display='none'">
-              <div style="display:flex;align-items:center;gap:10px">
-                <span style="font-size:20px">${m.icon}</span>
-                <div style="flex:1">
-                  <div style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.04em">${m.label} <span style="color:var(--teal-border);font-size:11px">ⓘ</span></div>
-                  <div style="font-family:var(--font-display);font-size:26px;font-weight:700;color:${m.color}">${esc(m.val || '—')}</div>
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              Optimisation Summary
+            </div>
+            <div class="panel-sub">
+              ${esc(method)}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-body">
+          <div style="display:flex;flex-direction:column;gap:14px">
+            <div>
+              <div class="stat-card-label">
+                Expected Return
+              </div>
+              <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--green)">
+                ${metrics.expected_return || "—"}
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div>
+              <div class="stat-card-label">
+                Volatility
+              </div>
+              <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--red)">
+                ${metrics.volatility || "—"}
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div>
+              <div class="stat-card-label">
+                Sharpe Ratio
+              </div>
+              <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--teal)">
+                ${metrics.sharpe_ratio || "—"}
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div>
+              <div class="stat-card-label">
+                Monte Carlo Goal Probability
+              </div>
+              <div style="font-family:var(--font-display);font-size:22px;font-weight:700;color:var(--teal)">
+                ${
+                  mc.prob_goal !== undefined
+                    ? mc.prob_goal + "%"
+                    : "—"
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+// ─── RICH PORTFOLIO PRESENTATION HELPERS ─────────────────────────────────────
+
+function moneyFmt(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return "JMD " + n.toLocaleString(undefined, {maximumFractionDigits:0});
+}
+
+function pctFmt(value) {
+  if (value == null || value === "") return "—";
+  if (typeof value === "string" && value.includes("%")) return value;
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(1) + "%" : "—";
+}
+
+function getMonteCarlo() {
+  const mc = state.report?.monte_carlo || state.report?.metrics?.monte_carlo || {};
+  return {
+    ...mc,
+    prob_goal:     mc.prob_goal     ?? mc.success_rate   ?? mc.prob_double,
+    median_final:  mc.median_final  ?? mc.median_wealth,
+    p10_final:     mc.p10_final     ?? mc.p10_wealth     ?? mc.expected_shortfall_10pct,
+    p90_final:     mc.p90_final     ?? mc.p90_wealth,
+    prob_preserve: mc.prob_preserve ?? mc.prob_loss,
+    horizon_years: mc.horizon_years ?? mc.years,
+    n_simulations: mc.n_simulations ?? mc.simulations,
+  };
+}
+
+function getClassAllocation() {
+  if (state.report?.class_allocation?.length) {
+    return state.report.class_allocation.map(x => ({label: x.class||x.label, pct: x.pct}));
+  }
+  const totals = {};
+  (state.report?.allocations||[]).forEach(a => {
+    const cls = a.class||"Other";
+    totals[cls] = (totals[cls]||0) + Number(a.pct||0);
+  });
+  return Object.entries(totals)
+    .map(([label,pct]) => ({label, pct: Number(pct.toFixed(1))}))
+    .sort((a,b) => b.pct - a.pct);
+}
+
+function getSummaryCardHTML(profile, metrics, confidence, mc) {
+  const divPct = Math.round((confidence?.breakdown?.diversification?.pts||0)/(confidence?.breakdown?.diversification?.max||25)*100);
+  const strategy = {Conservative:"Capital Preservation + Income",Moderate:"Growth + Stability",Aggressive:"Maximum Growth"}[profile]||"Optimised";
+  const horizon  = {Conservative:"Short to Medium Term",Moderate:"Medium to Long Term",Aggressive:"Long Term"}[profile]||"Medium Term";
+  const items = [
+    ["📈 Expected Return", metrics.expected_return||"—", "#10B981"],
+    ["📊 Risk Level",      profile,                      "var(--teal)"],
+    ["🕐 Horizon",         horizon,                      "var(--text)"],
+    ["🔀 Diversification", divPct+"/100",                "var(--teal)"],
+    ["⚡ Strategy",        strategy,                     "var(--text)"],
+    ["🎯 Confidence",      (confidence?.score||"—")+"/100 ("+(confidence?.grade||"—")+")", "var(--teal)"],
+  ];
+  return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    ${items.map(([lbl,val,col]) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px">
+        <span style="font-size:12px;color:var(--text-muted)">${lbl}</span>
+        <strong style="font-size:12px;color:${col};text-align:right">${val}</strong>
+      </div>`).join("")}
+  </div>`;
+}
+
+function getRiskMeterHTML(profile) {
+  const idx   = ["Conservative","Moderate","Aggressive"].indexOf(profile);
+  const pct   = idx===0?16:idx===2?84:50;
+  const color = idx===0?"#10B981":idx===2?"#EF4444":"#F59E0B";
+  const desc  = {
+    Conservative: "Your portfolio prioritises stability. Lower volatility with steady, moderate growth — suitable for capital preservation and near-term goals.",
+    Moderate:     "Balanced growth and stability. You can handle moderate market swings in exchange for better long-term returns.",
+    Aggressive:   "Growth-focused with higher volatility. Strong long-term potential for investors comfortable with significant market swings."
+  }[profile]||"";
+  return `<div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:8px">
+      <span>🟢 Conservative</span><span>🟡 Moderate</span><span>🔴 Aggressive</span>
+    </div>
+    <div style="height:10px;background:linear-gradient(90deg,#10B981,#F59E0B,#EF4444);border-radius:999px;position:relative;margin-bottom:12px">
+      <div style="position:absolute;top:-4px;left:${pct}%;transform:translateX(-50%);width:18px;height:18px;background:${color};border:3px solid white;border-radius:50%;box-shadow:0 2px 8px rgba(0,0,0,0.2)"></div>
+    </div>
+    <p style="font-size:13px;color:var(--text-muted);line-height:1.65">${desc}</p>
+  </div>`;
+}
+
+function getProjectionHTML(expectedReturnStr, initialCapital) {
+  const r  = parseFloat(expectedReturnStr)/100 || 0.10;
+  const c0 = initialCapital || 100000;
+  const fmt = n => "JMD " + Math.round(n).toLocaleString();
+  return `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+    ${[["1 Year",c0*Math.pow(1+r,1),"#10B981"],["3 Years",c0*Math.pow(1+r,3),"#0BB8A9"],["5 Years",c0*Math.pow(1+r,5),"#3B82F6"],["10 Years",c0*Math.pow(1+r,10),"#8B5CF6"]].map(([lbl,val,col]) => `
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px">${lbl}</div>
+        <div style="font-size:15px;font-weight:800;color:${col}">${fmt(val)}</div>
+      </div>`).join("")}
+  </div>
+  <p style="font-size:11px;color:#9CA3AF;margin-top:8px">* Illustrative only. Based on ${(r*100).toFixed(1)}% p.a. Actual results vary.</p>`;
+}
+
+function getScenarioHTML(ret_str, vol_str) {
+  const r = parseFloat(ret_str)/100||0.10, v = parseFloat(vol_str)/100||0.10;
+  return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    ${[
+      ["📈","Strong Market",  ((r+v*1.5)*100).toFixed(1), "rgba(16,185,129,0.08)","rgba(16,185,129,0.25)","#10B981","Above-average conditions"],
+      ["⚖️","Typical Year",   (r*100).toFixed(1),          "rgba(245,158,11,0.08)", "rgba(245,158,11,0.25)", "#F59E0B","Normal market conditions"],
+      ["📉","Weak Market",    ((r-v*1.5)*100).toFixed(1), "rgba(239,68,68,0.08)",  "rgba(239,68,68,0.25)",  "#EF4444","Below-average conditions"]
+    ].map(([icon,lbl,val,bg,brd,col,sub]) => `
+      <div style="background:${bg};border:1px solid ${brd};border-radius:12px;padding:16px">
+        <div style="font-size:18px;margin-bottom:6px">${icon}</div>
+        <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px">${lbl}</div>
+        <div style="font-size:22px;font-weight:800;color:${col}">${parseFloat(val)>=0?"+":""}${val}%</div>
+        <div style="font-size:11px;color:#6B7280;margin-top:4px">${sub}</div>
+      </div>`).join("")}
+  </div>`;
+}
+
+function getWhyFitsHTML(answers, profile, bflags) {
+  const reasons = [];
+  if (profile) reasons.push(`Questionnaire scoring mapped you to a <strong>${profile}</strong> risk profile.`);
+  if (answers?.primary_goal) reasons.push(`Primary goal is <strong>${esc(answers.primary_goal)}</strong> — this shaped the asset class weighting.`);
+  if (answers?.income_loss_runway) reasons.push(`Income runway of <strong>${esc(answers.income_loss_runway)}</strong> influenced the liquidity allocation.`);
+  if (answers?.earn_currency) reasons.push(`You earn in <strong>${esc(answers.earn_currency)}</strong> — JMD vs USD exposure adjusted accordingly.`);
+  if (answers?.inflation_impact && answers.inflation_impact!=="Not sure")
+    reasons.push(`Inflation sensitivity is <strong>${esc(answers.inflation_impact)}</strong> — inflation-hedging assets were considered.`);
+  const flagKeys = Object.keys(bflags||{}).filter(k => bflags[k]?.detected);
+  if (flagKeys.length) reasons.push(`Behavioral analysis detected <strong>${flagKeys.map(k=>k.replace(/_/g," ")).join(", ")}</strong> — portfolio adjusted.`);
+  const suitFor = {
+    Conservative: ["First-time investors","Capital preservation seekers","Short to medium horizons"],
+    Moderate:     ["Young professionals","Medium to long-term planners","Balanced growth seekers"],
+    Aggressive:   ["Long-term growth investors","Experienced investors","High risk tolerance"]
+  }[profile]||[];
+  return `<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+    ${reasons.map(r => `<div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.65">
+      <span style="color:var(--teal);font-size:15px;flex-shrink:0">✔</span><span>${r}</span>
+    </div>`).join("")}
+  </div>
+  ${suitFor.length ? `<div style="background:rgba(11,184,169,0.06);border:1px solid rgba(11,184,169,0.2);border-radius:10px;padding:12px">
+    <div style="font-size:11px;font-weight:800;color:var(--teal);margin-bottom:6px">SUITABLE FOR</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">${suitFor.map(s=>`<span style="font-size:12px;color:var(--teal);background:white;border:1px solid rgba(11,184,169,0.3);padding:3px 10px;border-radius:999px">✔ ${s}</span>`).join("")}</div>
+  </div>` : ""}`;
+}
+
+function getClassExplanationHTML(classAlloc) {
+  const exp = {
+    "Cash":         "Liquid instruments providing stability and covering near-term withdrawal needs.",
+    "Fixed Income": "Bond-like instruments generating steady income and reducing overall portfolio volatility.",
+    "Equity":       "Growth-oriented holdings with higher return potential and higher market fluctuation.",
+    "Real Estate":  "Property-linked exposure providing income and inflation resilience.",
+    "Alternatives": "Non-traditional exposure improving diversification.",
+    "Commodities":  "Inflation-sensitive assets that behave differently from stocks and bonds."
+  };
+  return (classAlloc||[]).map(({label,pct}) => `
+    <div style="display:flex;gap:14px;align-items:flex-start;padding:12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)">
+      <div style="width:38px;height:38px;border-radius:8px;background:rgba(11,184,169,0.08);border:1px solid rgba(11,184,169,0.2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--teal);flex-shrink:0">${pct}%</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px">${esc(label)}</div>
+        <div style="font-size:12px;color:var(--text-muted);line-height:1.6">${exp[label]||"Contributes to portfolio diversification and risk management."}</div>
+      </div>
+    </div>`).join("");
+}
+
+function getRecommendationsHTML(profile, answers) {
+  const freq = answers?.review_frequency || "Quarterly";
+  return [
+    `Rebalance <strong>${freq.toLowerCase()}</strong> or when any asset class drifts more than 5% from its target weight.`,
+    "Avoid panic-selling during downturns — volatility is a normal, expected part of investing.",
+    "Review your financial goals annually to ensure the portfolio still matches your life situation.",
+    "Maintain 3–6 months of living expenses in accessible savings before increasing investments.",
+    profile==="Conservative" ? "Consider gradually increasing equity exposure as your emergency fund strengthens." :
+    profile==="Aggressive"   ? "Monitor concentration — no single sector should exceed 30% of your equity allocation." :
+                               "As income grows, increase contributions consistently to benefit from compounding returns.",
+    "When rebalancing, consider tax implications — selling winners can trigger capital gains."
+  ].map(r => `
+    <div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:var(--text);line-height:1.65;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--teal);font-size:14px;flex-shrink:0">📌</span>
+      <span>${r}</span>
+    </div>`).join("");
+}
+
+// ─── PORTFOLIO VIEW ─────────────────────────────────────────────────────────
+// ─── PORTFOLIO VIEW ─────────────────────────────────────────────────────────
+function renderPortfolio(mount) {
+
+  if (!state.report?.allocations?.length) {
+
+    mount.innerHTML = `
+      <section class="panel">
+        <div class="empty-state">
+          <div class="empty-icon">📊</div>
+          <div class="empty-h">
+            No Portfolio Yet
+          </div>
+          <p class="empty-p">
+            Chat with Barita Bear to generate your personalised portfolio.
+          </p>
+          <button class="btn-action" onclick="switchView('advisor')">
+            🐻 Start AI Chatbot →
+          </button>
+        </div>
+      </section>
+    `;
+
+    return;
+  }
+
+  const report = state.report;
+  const allocations = report.allocations || [];
+  const metrics = report.metrics || {};
+  const profile =
+    report.behavioral_profile ||
+    report.profile ||
+    "Moderate";
+
+  const confidence = report.confidence || {};
+  const mc = getMonteCarlo();
+  const classAlloc = report.class_allocation || getClassAllocation();
+
+  const candidates =
+    report.optimizer_comparison ||
+    metrics.candidate_portfolios ||
+    [];
+
+  const method =
+    metrics.optimization_method ||
+    report.optimization_method ||
+    metrics.mvo_strategy ||
+    report.mvo_strategy ||
+    "Optimised";
+
+  const optSummary =
+    report.optimizer_summary ||
+    metrics.optimizer_summary ||
+    metrics.optimization_explanation ||
+    report.engine_explanation ||
+    "The system used your questionnaire answers, Dimension Depths asset data, covariance, correlations, and risk suitability logic to generate this recommendation.";
+
+  const name =
+    state.user?.displayName?.split(" ")[0] ||
+    state.answers?.first_name ||
+    "Investor";
+
+  mount.innerHTML = `
+    <section style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:14px;flex-wrap:wrap">
+      <div>
+        <h2 style="font-family:var(--font-display);font-size:24px;font-weight:800;color:var(--text);margin-bottom:6px">
+          ${esc(name)}'s Investment Portfolio
+          <span class="profile-badge ${String(profile).toLowerCase()}" style="margin-left:10px">
+            ${esc(profile)}
+          </span>
+        </h2>
+
+        <p style="font-size:13px;color:var(--text-muted)">
+          Built using risk profiling, behavioural suitability logic, Dimension Depths data, MVO, HRP, Black-Litterman-style views, and Monte Carlo validation.
+        </p>
+      </div>
+
+      <button class="btn-dl" id="btn-dl-main">
+        ⬇ Download Full Report
+      </button>
+    </section>
+
+    <section class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-card-label">Confidence Score</div>
+        <div class="stat-card-val" style="color:var(--teal)">
+          ${confidence.score ?? "—"}/100
+        </div>
+        <div class="stat-card-sub">
+          ${esc(confidence.label || "Portfolio suitability match")}
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-label">Expected Return</div>
+        <div class="stat-card-val" style="color:var(--green)">
+          ${metrics.expected_return || "—"}
+        </div>
+        <div class="stat-card-sub">Annualised estimate</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-label">Volatility</div>
+        <div class="stat-card-val" style="color:var(--red)">
+          ${metrics.volatility || "—"}
+        </div>
+        <div class="stat-card-sub">Risk / annual swings</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-card-label">Sharpe Ratio</div>
+        <div class="stat-card-val" style="color:var(--teal)">
+          ${metrics.sharpe_ratio || "—"}
+        </div>
+        <div class="stat-card-sub">Return per unit risk</div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">🎚️ Risk Level</div>
+          <div class="panel-sub">Your position on the risk spectrum</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${getRiskMeterHTML(profile)}
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">💰 What Happens to JMD 100,000?</div>
+          <div class="panel-sub">Simple projection for beginner investors</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${getProjectionHTML(metrics.expected_return, 100000)}
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">🔭 Scenario Analysis</div>
+          <div class="panel-sub">How your portfolio may behave in different markets</div>
+        </div>
+      </div>
+      <div class="panel-body">
+        ${getScenarioHTML(metrics.expected_return, metrics.volatility)}
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px;border-left:4px solid var(--teal)">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">🧠 Why This Portfolio Was Chosen</div>
+          <div class="panel-sub">Selected method: ${esc(method)}</div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <p style="font-size:14px;line-height:1.75;color:var(--text);margin-bottom:16px">
+          ${esc(optSummary)}
+        </p>
+
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="font-size:12px;font-weight:800;color:var(--text)">MVO</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:4px">
+              Finds efficient risk-return weights.
+            </div>
+          </div>
+
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="font-size:12px;font-weight:800;color:var(--text)">Black-Litterman</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:4px">
+              Tilts expected returns using investor views.
+            </div>
+          </div>
+
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="font-size:12px;font-weight:800;color:var(--text)">HRP</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:4px">
+              Tests correlation-based diversification.
+            </div>
+          </div>
+
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px">
+            <div style="font-size:12px;font-weight:800;color:var(--text)">Monte Carlo</div>
+            <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:4px">
+              Stress-tests possible future outcomes.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    ${
+      candidates.length
+        ? `
+          <section class="panel" style="margin-bottom:22px">
+            <div class="panel-header">
+              <div>
+                <div class="panel-title">🔬 Optimizer Comparison</div>
+                <div class="panel-sub">
+                  The engine tested candidate portfolios and selected the best match.
                 </div>
               </div>
-              <div class="metric-tip" style="display:none;position:absolute;left:0;right:0;bottom:calc(100% + 4px);background:var(--navy);color:white;border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.6;z-index:10;box-shadow:0 4px 16px rgba(0,0,0,0.2)">
-                ${metaExplain[m.key]}
-              </div>
             </div>
-          `).join('')}
-        </div>
-      </div>
-    </div>
 
-    <!-- SECTION 3: Donut Chart + Asset Breakdown -->
-    <div class="two-col" style="margin-bottom:20px">
+            <div class="panel-body">
+              <canvas id="candidate-chart" height="80" style="margin-bottom:18px"></canvas>
 
-      <!-- Donut chart -->
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">🍩 Where Is My Money Going?</div><div class="panel-sub">Visual breakdown of your allocation</div></div>
-        <div class="panel-body" style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
-          <canvas id="alloc-donut" width="180" height="180" style="flex-shrink:0"></canvas>
-          <div id="donut-legend" style="flex:1;min-width:140px;display:flex;flex-direction:column;gap:8px"></div>
-        </div>
-      </div>
+              <table class="fi-table">
+                <thead>
+                  <tr>
+                    <th>Method Tested</th>
+                    <th>Expected Return</th>
+                    <th>Volatility</th>
+                    <th>Sharpe</th>
+                    <th>Diversification</th>
+                    <th>Selected</th>
+                  </tr>
+                </thead>
 
-      <!-- Asset category explanations -->
-      <div class="panel">
-        <div class="panel-header"><div class="panel-title">📚 Asset Types Explained</div><div class="panel-sub">What each category actually is</div></div>
-        <div class="panel-body" style="display:flex;flex-direction:column;gap:12px">
-          ${Object.entries(categoryDescriptions).map(([cat, desc]) => {
-            const inPortfolio = allocations.some(a => (a.superClass || a.asset_class || a['class'] || '') === cat || (a.superClass || a.asset_class || a['class'] || '').includes(cat));
-            return `<div style="padding:12px 14px;border-radius:8px;background:${inPortfolio ? 'var(--teal-glow)' : 'var(--surface-2)'};border:1px solid ${inPortfolio ? 'var(--teal-border)' : 'var(--border)'}">
-              <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${cat} ${inPortfolio ? '<span style="font-size:11px;color:var(--teal);font-weight:700">✓ IN YOUR PORTFOLIO</span>' : ''}</div>
-              <div style="font-size:13px;color:var(--text-muted);line-height:1.6">${desc}</div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>
+                <tbody>
+                  ${candidates.map(c => `
+                    <tr>
+                      <td>${esc(c.method || c.name || "Method")}</td>
+                      <td>${pctFmt(c.expected_return)}</td>
+                      <td>${pctFmt(c.volatility)}</td>
+                      <td>${esc(c.sharpe ?? "—")}</td>
+                      <td>${esc(c.diversification ?? "—")}</td>
+                      <td>${c.selected ? "✓ Yes" : "—"}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        `
+        : ""
+    }
 
-    <!-- SECTION 4: Full allocation bar chart -->
-    <div class="panel" style="margin-bottom:20px">
-      <div class="panel-header"><div class="panel-title">📋 Your Full Allocation</div><div class="panel-sub">Each asset in plain English</div></div>
-      <div class="panel-body">
-        <canvas id="alloc-bar-chart" height="80" style="margin-bottom:20px"></canvas>
-        <div id="alloc-cards" style="display:flex;flex-direction:column;gap:10px"></div>
-      </div>
-    </div>
-
-    <!-- SECTION 5: Growth Projection -->
-    <div class="panel" style="margin-bottom:20px">
+    <section class="panel" style="margin-bottom:22px;border-left:4px solid var(--teal)">
       <div class="panel-header">
-        <div><div class="panel-title">📈 How Could Your Money Grow?</div><div class="panel-sub">Hypothetical 10-year projection based on your portfolio's expected return</div></div>
+        <div>
+          <div class="panel-title">💡 Why This Portfolio Fits You</div>
+          <div class="panel-sub">How your answers shaped this recommendation</div>
+        </div>
       </div>
-      <div class="panel-body">
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.65">
-          This chart shows what could happen to <strong>$100,000</strong> invested in your portfolio over 10 years.
-          The middle line is the expected outcome. The shaded area shows the range of realistic outcomes based on your portfolio's volatility.
-          <em>This is illustrative only — actual returns will vary.</em>
-        </p>
-        <canvas id="growth-chart" height="70"></canvas>
-      </div>
-    </div>
 
-    <!-- SECTION 6: Your Profile Summary -->
-    <div class="panel" style="margin-bottom:20px">
-      <div class="panel-header"><div class="panel-title">👤 Your Investment Profile Summary</div><div class="panel-sub">Key facts used to build your portfolio</div></div>
-      <div class="panel-body" style="padding:0">
-        <table class="fi-table">
-          <thead><tr><th>What We Looked At</th><th>Your Answer</th><th>What It Means</th></tr></thead>
-          <tbody>
-            <tr><td>Primary Goal</td><td>${esc(state.answers.primary_goal || '—')}</td><td style="font-size:12px;color:var(--text-muted)">The main thing you want your money to do for you</td></tr>
-            <tr><td>Investment Horizon</td><td>${esc(state.answers.withdrawal_time || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How soon you might need this money back</td></tr>
-            <tr><td>Risk Reaction</td><td>${esc(state.answers.drop_reaction || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How you would respond if markets dropped</td></tr>
-            <tr><td>Max Loss Tolerance</td><td>${esc(state.answers.max_loss || '—')}</td><td style="font-size:12px;color:var(--text-muted)">The biggest loss you could handle without changing strategy</td></tr>
-            <tr><td>Debt Situation</td><td>${esc(state.answers.debt_situation || '—')}</td><td style="font-size:12px;color:var(--text-muted)">Your current debt affects how much risk is appropriate</td></tr>
-            <tr><td>Income Runway</td><td>${esc(state.answers.income_loss_runway || '—')}</td><td style="font-size:12px;color:var(--text-muted)">How long you could survive financially without your income</td></tr>
-            <tr><td>Primary Currency</td><td>${esc(state.answers.earn_currency || '—')}</td><td style="font-size:12px;color:var(--text-muted)">Affects which instruments suit you best</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- SECTION 7: Key Risks -->
-    <div class="panel" style="margin-bottom:20px">
-      <div class="panel-header"><div class="panel-title">⚠️ Things To Keep In Mind</div><div class="panel-sub">Honest risks every investor should know about</div></div>
       <div class="panel-body">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          ${[
-            { icon: '📉', title: 'Market ups and downs', desc: 'All investments can lose value in the short term. This is normal and expected — the key is staying patient.' },
-            { icon: '💱', title: 'Currency risk', desc: 'Some assets in your portfolio are in USD. If the JMD strengthens, those returns could look smaller in local currency.' },
-            { icon: '🏦', title: 'Interest rate changes', desc: 'When interest rates rise, bond (fixed income) prices typically fall. This affects the fixed income portion of your portfolio.' },
-            { icon: '⏳', title: 'Time horizon matters', desc: 'This portfolio is built for your stated time horizon. Withdrawing early could lock in losses at the wrong time.' },
-          ].map(r => `
-            <div style="padding:14px;border-radius:10px;background:var(--amber-bg);border:1px solid rgba(245,158,11,0.2)">
-              <div style="font-size:20px;margin-bottom:8px">${r.icon}</div>
-              <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">${r.title}</div>
-              <div style="font-size:12px;color:var(--text-muted);line-height:1.6">${r.desc}</div>
+        ${getWhyFitsHTML(state.answers, profile, report.behavioral_flags || {})}
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">📋 Full Allocation + Rationale</div>
+          <div class="panel-sub">
+            Each selected asset includes the reason it fits your profile.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div
+          style="
+            height: 320px;
+            max-height: 320px;
+            overflow: hidden;
+            margin-bottom: 22px;
+            position: relative;
+          "
+        >
+          <canvas
+            id="alloc-bar-chart"
+            style="
+              width:100% !important;
+              height:100% !important;
+              display:block;
+            "
+          ></canvas>
+        </div>
+
+        <div id="alloc-cards" style="display:flex;flex-direction:column;gap:12px">
+          ${allocations.map((asset, index) => renderAssetCard(asset, index)).join("")}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">📚 What Each Asset Class Does For You</div>
+          <div class="panel-sub">Beginner-friendly explanation of the portfolio mix</div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${getClassExplanationHTML(classAlloc)}
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">🎲 Monte Carlo Goal Validation</div>
+          <div class="panel-sub">
+            ${esc(mc.method_note || "Stress-tested across simulated market paths")}
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+          <div class="stat-card" style="box-shadow:none">
+            <div class="stat-card-label">Goal Probability</div>
+            <div class="stat-card-val" style="color:var(--teal)">
+              ${mc.prob_goal !== undefined ? mc.prob_goal + "%" : "—"}
             </div>
-          `).join('')}
+            <div class="stat-card-sub">Chance of hitting target</div>
+          </div>
+
+          <div class="stat-card" style="box-shadow:none">
+            <div class="stat-card-label">Capital Preservation</div>
+            <div class="stat-card-val" style="color:var(--green)">
+              ${mc.prob_preserve !== undefined ? mc.prob_preserve + "%" : "—"}
+            </div>
+            <div class="stat-card-sub">Keeps at least 90%</div>
+          </div>
+
+          <div class="stat-card" style="box-shadow:none">
+            <div class="stat-card-label">Median Final Wealth</div>
+            <div class="stat-card-val" style="font-size:20px">
+              ${moneyFmt(mc.median_final)}
+            </div>
+            <div class="stat-card-sub">Middle simulated outcome</div>
+          </div>
+
+          <div class="stat-card" style="box-shadow:none">
+            <div class="stat-card-label">Downside P10</div>
+            <div class="stat-card-val" style="font-size:20px;color:var(--red)">
+              ${moneyFmt(mc.p10_final || mc.expected_shortfall_10pct)}
+            </div>
+            <div class="stat-card-sub">Stress estimate</div>
+          </div>
+        </div>
+
+        <canvas id="mc-outcome-chart" height="90"></canvas>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">🐻 Barita’s Advisory Note</div>
+          <div class="panel-sub">Personalised recommendation explanation</div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        <p style="font-size:14px;line-height:1.85;color:var(--text)">
+          ${esc(report.advisory_note || "This portfolio was built to match your goal, time horizon, risk comfort, currency needs, liquidity preference, and behavioural profile.")}
+        </p>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">📌 Recommendations</div>
+          <div class="panel-sub">What to do next with your portfolio</div>
+        </div>
+      </div>
+
+      <div class="panel-body">
+        ${getRecommendationsHTML(profile, state.answers)}
+      </div>
+    </section>
+  `;
+
+  drawPortfolioCharts({
+    allocations,
+    classAlloc,
+    candidates,
+    mc
+  });
+
+  document
+    .getElementById("btn-dl-main")
+    ?.addEventListener("click", () => downloadPDF("latest"));
+}
+
+function renderAssetCard(asset, index) {
+
+  const color =
+    asset.color ||
+    [
+      "#0BB8A9",
+      "#3B82F6",
+      "#F59E0B",
+      "#10B981",
+      "#EF4444",
+      "#8B5CF6"
+    ][index % 6];
+
+  return `
+    <div style="display:flex;align-items:flex-start;gap:14px;padding:15px 16px;border-radius:12px;background:var(--surface-2);border:1px solid var(--border)">
+      <div style="width:10px;height:48px;border-radius:999px;background:${color};flex-shrink:0"></div>
+
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+          <strong style="font-size:14px;color:var(--text)">
+            ${esc(asset.label || asset.ticker || "Asset")}
+          </strong>
+
+          <span style="font-size:11px;color:var(--text-faint);background:var(--border);padding:2px 8px;border-radius:999px">
+            ${esc(asset.ticker || "")}
+          </span>
+
+          <span style="font-size:11px;color:var(--teal);background:var(--teal-glow);padding:2px 8px;border-radius:999px">
+            ${esc(asset.class || "Asset")}
+          </span>
+        </div>
+
+        <p style="font-size:12px;color:var(--text-muted);line-height:1.65">
+          ${esc(asset.rationale || "Selected because it improves suitability, diversification, or risk-return balance for your profile.")}
+        </p>
+
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--text-muted)">
+          <span>
+            Expected return:
+            <strong>${pctFmt(asset.expected_return)}</strong>
+          </span>
+
+          <span>
+            Volatility:
+            <strong>${pctFmt(asset.volatility)}</strong>
+          </span>
+
+          <span>
+            Diversification penalty:
+            <strong>${asset.corr_penalty ?? "—"}</strong>
+          </span>
+        </div>
+      </div>
+
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-family:var(--font-display);font-size:22px;font-weight:800;color:${color}">
+          ${pctFmt(asset.pct)}
+        </div>
+        <div style="font-size:11px;color:var(--text-faint)">
+          of portfolio
         </div>
       </div>
     </div>
   `;
+}
 
-  // ── Draw Risk Gauge ──
-  const gaugeCanvas = document.getElementById('risk-gauge');
-  if (gaugeCanvas) {
-    const ctx = gaugeCanvas.getContext('2d');
-    const cx = 100, cy = 100, r = 80;
-    // Background arc
-    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.lineWidth = 18;
-    const grad = ctx.createLinearGradient(20, 0, 180, 0);
-    grad.addColorStop(0, '#10B981'); grad.addColorStop(0.5, '#F59E0B'); grad.addColorStop(1, '#EF4444');
-    ctx.strokeStyle = grad; ctx.stroke();
-    // Needle
-    const angle = Math.PI + ((riskLevel - 1) / 2) * Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(cx + (r - 10) * Math.cos(angle), cy + (r - 10) * Math.sin(angle));
-    ctx.lineWidth = 3; ctx.strokeStyle = '#1A2342'; ctx.lineCap = 'round'; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#1A2342'; ctx.fill();
-  }
+function drawPortfolioCharts({ allocations, classAlloc, candidates, mc }) {
 
-  // ── Draw Donut Chart ──
-  const donutCanvas = document.getElementById('alloc-donut');
-  if (donutCanvas && typeof Chart !== 'undefined') {
-    new Chart(donutCanvas.getContext('2d'), {
-      type: 'doughnut',
+  const colors = [
+    "#67b80b",
+    "#3B82F6",
+    "#F59E0B",
+    "#1010b9",
+    "#EF4444",
+    "#8B5CF6",
+    "#EC4899",
+    "#eff704"
+  ];
+
+  const bar = document.getElementById("alloc-bar-chart");
+
+  if (bar && typeof Chart !== "undefined") {
+    new Chart(bar.getContext("2d"), {
+      type: "bar",
       data: {
         labels: allocations.map(a => a.ticker || a.label),
-        datasets: [{ data: allocations.map(a => parseFloat(a.pct) || 0), backgroundColor: chartColors, borderWidth: 0, hoverOffset: 4 }]
-      },
-      options: { responsive: false, cutout: '65%', plugins: { legend: { display: false } } }
-    });
-    const legend = document.getElementById('donut-legend');
-    allocations.forEach((a, i) => {
-      const item = document.createElement('div');
-      item.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px';
-      item.innerHTML = `<div style="width:10px;height:10px;border-radius:3px;flex-shrink:0;background:${chartColors[i % chartColors.length]}"></div>
-        <span style="color:var(--text-muted);flex:1">${esc(a.label || a.ticker)}</span>
-        <span style="font-weight:700;color:var(--text)">${a.pct}%</span>`;
-      legend.appendChild(item);
-    });
-  }
-
-  // ── Draw Bar Chart ──
-  const barCanvas = document.getElementById('alloc-bar-chart');
-  if (barCanvas && typeof Chart !== 'undefined') {
-    new Chart(barCanvas.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: allocations.map(a => a.ticker || a.label),
-        datasets: [{ data: allocations.map(a => parseFloat(a.pct) || 0), backgroundColor: chartColors, borderWidth: 0, borderRadius: 6 }]
-      },
-      options: {
-        responsive: true, indexAxis: 'x',
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-          y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { callback: v => v + '%' } }
-        }
-      }
-    });
-  }
-
-  // ── Allocation Cards ──
-  const cardsEl = document.getElementById('alloc-cards');
-  const assetPlainEnglish = {
-    'Cash':         'Safe cash reserve — earns steady interest, always accessible.',
-    'Fixed Income': 'Earns regular interest payments from governments or companies. Lower risk than stocks.',
-    'Equity':       'Ownership in companies. Higher growth potential over time, but can be volatile short-term.',
-    'Real Estate':  'Property investment through a fund. Earns income and grows with the property market.',
-    'Alternatives': 'Non-traditional investments designed to diversify and reduce overall portfolio risk.',
-    'Fund':         'A managed basket of multiple assets for built-in diversification.'
-  };
-  allocations.forEach((a, i) => {
-    const sc = a.superClass || a.asset_class || a['class'] || 'Other';
-    const plainEng = assetPlainEnglish[sc] || Object.entries(assetPlainEnglish).find(([k]) => sc.includes(k))?.[1] || 'A diversified investment instrument.';
-    const card = document.createElement('div');
-    card.style.cssText = 'display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)';
-    card.innerHTML = `
-      <div style="width:10px;height:40px;border-radius:5px;flex-shrink:0;background:${chartColors[i % chartColors.length]}"></div>
-      <div style="flex:1;min-width:0">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-          <span style="font-weight:700;font-size:14px;color:var(--text)">${esc(a.label || a.ticker)}</span>
-          <span style="font-size:11px;color:var(--text-faint);background:var(--border);padding:1px 7px;border-radius:10px">${esc(a.ticker || '')}</span>
-          <span style="font-size:11px;color:var(--text-faint)">${esc(sc)}</span>
-        </div>
-        <div style="font-size:12px;color:var(--text-muted);line-height:1.5">${plainEng}${a.rationale ? ' ' + esc(a.rationale) : ''}</div>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-family:var(--font-display);font-size:20px;font-weight:700;color:${chartColors[i % chartColors.length]}">${a.pct}%</div>
-        <div style="font-size:11px;color:var(--text-faint)">of portfolio</div>
-      </div>
-    `;
-    cardsEl.appendChild(card);
-  });
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.querySelectorAll('.alloc-bar-inner').forEach(b => { b.style.width = b.dataset.pct + '%'; });
-  }));
-
-  // ── Growth Projection Chart ──
-  const growthCanvas = document.getElementById('growth-chart');
-  if (growthCanvas && typeof Chart !== 'undefined') {
-    const retStr  = metrics.expected_return || '8%';
-    const volStr  = metrics.volatility      || '10%';
-    const ret = parseFloat(retStr) / 100 || 0.08;
-    const vol = parseFloat(volStr) / 100 || 0.10;
-    const years = [0,1,2,3,4,5,6,7,8,9,10];
-    const base   = years.map(y => Math.round(100000 * Math.pow(1 + ret, y)));
-    const upper  = years.map(y => Math.round(100000 * Math.pow(1 + ret + vol * 0.5, y)));
-    const lower  = years.map(y => Math.round(100000 * Math.pow(1 + ret - vol * 0.5, y)));
-    new Chart(growthCanvas.getContext('2d'), {
-      type: 'line',
-      data: {
-        labels: years.map(y => 'Year ' + y),
         datasets: [
-          { label: 'Optimistic', data: upper, borderColor: 'rgba(16,185,129,0.3)', backgroundColor: 'rgba(16,185,129,0.06)', borderDash: [4,4], fill: false, pointRadius: 0, tension: 0.4 },
-          { label: 'Expected',   data: base,  borderColor: '#0BB8A9', backgroundColor: 'rgba(11,184,169,0.08)', fill: '-1', pointRadius: 3, tension: 0.4, borderWidth: 2.5 },
-          { label: 'Conservative', data: lower, borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.06)', borderDash: [4,4], fill: false, pointRadius: 0, tension: 0.4 }
+          {
+            data: allocations.map(a => Number(a.pct || 0)),
+            backgroundColor: allocations.map((a, i) => a.color || colors[i % colors.length]),
+            borderRadius: 7,
+            borderWidth: 0
+          }
         ]
       },
       options: {
         responsive: true,
-        plugins: { legend: { position: 'top', labels: { font: { size: 11 }, boxWidth: 20 } },
-          tooltip: { callbacks: { label: ctx => ' $' + ctx.raw.toLocaleString() } } },
+        maintainAspectRatio: false,
+        aspectRatio: 2,
+        animation: false,
+        plugins: {
+          legend: {
+            display: false
+          }
+        },
         scales: {
-          x: { grid: { display: false } },
-          y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { callback: v => '$' + (v/1000).toFixed(0) + 'K' } }
+          y: {
+            ticks: {
+              callback: v => v + "%"
+            }
+          }
         }
       }
     });
   }
 
-  document.getElementById('btn-dl-main')?.addEventListener('click', () => downloadPDF('latest'));
+  const candidateChart = document.getElementById("candidate-chart");
+
+  if (
+    candidateChart &&
+    typeof Chart !== "undefined" &&
+    candidates.length
+  ) {
+    new Chart(candidateChart.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: candidates.map(c => c.method || c.name || "Method"),
+        datasets: [
+          {
+            label: "Return %",
+            data: candidates.map(c => Number(c.expected_return || 0)),
+            borderRadius: 7,
+            borderWidth: 0
+          },
+          {
+            label: "Volatility %",
+            data: candidates.map(c => Number(c.volatility || 0)),
+            borderRadius: 7,
+            borderWidth: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            position: "top"
+          }
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: v => v + "%"
+            }
+          }
+        }
+      }
+    });
+  }
+
+  const mcChart = document.getElementById("mc-outcome-chart");
+
+  if (
+    mcChart &&
+    typeof Chart !== "undefined" &&
+    (mc.p10_final || mc.median_final || mc.p90_final)
+  ) {
+    new Chart(mcChart.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: [
+          "Downside P10",
+          "Median",
+          "Upside P90"
+        ],
+        datasets: [
+          {
+            label: "Final Wealth",
+            data: [
+              Number(mc.p10_final || mc.expected_shortfall_10pct || 0),
+              Number(mc.median_final || 0),
+              Number(mc.p90_final || 0)
+            ],
+            borderRadius: 8,
+            borderWidth: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: {
+            display: false
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => moneyFmt(ctx.raw)
+            }
+          }
+        },
+        scales: {
+          y: {
+            ticks: {
+              callback: v => "JMD " + (v / 1000).toFixed(0) + "K"
+            }
+          }
+        }
+      }
+    });
+  }
 }
 
-// ── AI ADVISOR VIEW ──
-// ── BEAR ADVISOR VIEW ──
-// Replaces the old plain-text AI Advisor with the full Barita bear chat experience
-function renderAdvisorView(area) {
-  const profile  = state.report?.behavioral_profile || state.report?.profile;
-  const hasReport= !!(state.report && state.report.allocations);
 
-  area.innerHTML = `
+// ─── ADVISOR / CHATBOT VIEW ─────────────────────────────────────────────────
+function renderAdvisor(mount) {
+
+  const hasReport =
+    !!state.report?.allocations?.length;
+
+  const profile =
+    state.report?.behavioral_profile ||
+    state.report?.profile ||
+    null;
+
+  const progress =
+    Math.min(
+      100,
+      Math.round(
+        (Object.keys(state.answers || {}).length / 24) * 100
+      )
+    );
+
+  mount.innerHTML = `
     <style>
-      /* Bear advisor styles scoped to this view */
-      .bear-chat-wrap { max-width: 760px; display: flex; flex-direction: column; height: calc(100vh - 180px); min-height: 500px; }
-      .bear-chat-header { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; background:var(--surface); border:1px solid var(--border); border-radius:16px 16px 0 0; box-shadow:0 1px 0 var(--border); }
-      .bear-chat-header-left { display:flex; align-items:center; gap:12px; }
-      .bear-avatar-lg { width:46px; height:46px; border-radius:50%; background:#FDF6EC; border:2px solid #FEF3C7; display:flex; align-items:center; justify-content:center; font-size:26px; box-shadow:0 2px 8px rgba(245,158,11,0.2); flex-shrink:0; }
-      .bear-chat-name { font-family:'Plus Jakarta Sans',sans-serif; font-size:16px; font-weight:700; color:var(--text); }
-      .bear-chat-sub  { font-size:12px; color:var(--text-muted); margin-top:2px; }
-      .bear-online    { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--green); }
-      .bear-online-dot{ width:7px; height:7px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; }
-      @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.4} }
+      .bear-chat-wrap {
+        max-width: 860px;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 170px);
+        min-height: 560px;
+        margin: 0 auto;
+      }
 
-      .bear-messages { flex:1; overflow-y:auto; padding:20px 22px; display:flex; flex-direction:column; gap:14px; background:var(--surface-2); border-left:1px solid var(--border); border-right:1px solid var(--border); }
-      .bear-messages::-webkit-scrollbar { width:4px; }
-      .bear-messages::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+      .bear-chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 18px 22px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px 16px 0 0;
+      }
 
-      .bmsg-bear { display:flex; align-items:flex-start; gap:10px; animation:msgIn 0.35s cubic-bezier(0.22,1,0.36,1) both; }
-      .bmsg-user { display:flex; justify-content:flex-end; animation:msgIn 0.3s ease both; }
-      @keyframes msgIn{ from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+      .bear-chat-header-left {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
 
-      .bmsg-bear-av { width:34px; height:34px; border-radius:50%; background:#FDF6EC; border:1.5px solid #FEF3C7; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
-      .bmsg-bear-bubble { background:var(--surface); border:1.5px solid var(--border); border-radius:18px 18px 18px 4px; padding:12px 16px; max-width:78%; font-size:14px; line-height:1.7; color:var(--text); box-shadow:0 1px 4px rgba(0,0,0,0.04); }
-      .bmsg-bear-bubble strong { color:var(--teal); }
-      .bmsg-user-bubble { background:var(--teal); color:white; border-radius:18px 18px 4px 18px; padding:11px 16px; max-width:72%; font-size:14px; line-height:1.65; box-shadow:0 4px 12px rgba(11,184,169,0.25); }
+      .bear-avatar-lg {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: #FDF6EC;
+        border: 2px solid #FEF3C7;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 27px;
+        box-shadow: 0 2px 8px rgba(245,158,11,.2);
+        flex-shrink: 0;
+      }
 
-      .bear-options { display:flex; flex-direction:column; gap:7px; margin-left:44px; margin-top:4px; animation:msgIn 0.35s 0.05s ease both; }
-      .bear-opt-btn { background:var(--surface); border:1.5px solid var(--border); border-radius:10px; padding:9px 16px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:500; color:var(--text); cursor:pointer; text-align:left; transition:all 0.18s; display:flex; align-items:center; gap:8px; }
-      .bear-opt-btn:hover { border-color:var(--teal); background:var(--teal-glow,#E8FAF8); color:var(--teal); transform:translateX(3px); }
-      .bear-opt-btn.selected { border-color:var(--teal); background:var(--teal-glow,#E8FAF8); color:var(--teal); font-weight:600; }
-      .opt-check { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:9px; flex-shrink:0; transition:all 0.15s; }
-      .bear-opt-btn.selected .opt-check { background:var(--teal); border-color:var(--teal); color:white; }
+      .bear-chat-name {
+        font-family: var(--font-display);
+        font-size: 17px;
+        font-weight: 800;
+        color: var(--text);
+      }
 
-      .bear-typing { display:flex; gap:4px; align-items:center; padding:4px 0; }
-      .bear-typing-dot { width:6px; height:6px; background:var(--text-faint,#A0ABBE); border-radius:50%; animation:typeBounce 1.3s infinite ease-in-out; }
-      .bear-typing-dot:nth-child(2){animation-delay:0.22s}
-      .bear-typing-dot:nth-child(3){animation-delay:0.44s}
-      @keyframes typeBounce{ 0%,80%,100%{transform:scale(0.4);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+      .bear-chat-sub {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 2px;
+      }
 
-      .bear-input-row { display:flex; gap:10px; padding:14px 18px; background:var(--surface); border:1px solid var(--border); border-top:none; border-radius:0 0 16px 16px; }
-      .bear-text-input { flex:1; background:var(--surface-2,#F7F9FC); border:1.5px solid var(--border); border-radius:24px; padding:11px 18px; font-family:'DM Sans',sans-serif; font-size:14px; color:var(--text); outline:none; transition:border-color 0.2s; resize:none; min-height:44px; max-height:100px; line-height:1.5; }
-      .bear-text-input:focus { border-color:var(--teal); box-shadow:0 0 0 3px rgba(11,184,169,0.1); }
-      .bear-text-input::placeholder { color:var(--text-faint,#A0ABBE); }
-      .bear-send-btn { width:44px; height:44px; background:var(--teal); border:none; border-radius:50%; color:white; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0; }
-      .bear-send-btn:hover { background:#089E90; transform:scale(1.05); }
-      .bear-send-btn:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+      .bear-online {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--green);
+      }
 
-      .bear-no-report { text-align:center; padding:40px 24px; }
-      .bear-no-report-icon { font-size:56px; margin-bottom:16px; }
-      .bear-no-report h3 { font-family:'Plus Jakarta Sans',sans-serif; font-size:18px; font-weight:700; margin-bottom:8px; color:var(--text); }
-      .bear-no-report p { font-size:14px; color:var(--text-muted); line-height:1.7; margin-bottom:20px; }
+      .bear-online-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        animation: pulse 2s infinite;
+      }
+
+      .bear-progress {
+        min-width: 140px;
+      }
+
+      .bear-mode-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--teal-border);
+        background: var(--teal-glow);
+        color: var(--teal);
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .bear-progress-track {
+        height: 6px;
+        background: var(--border);
+        border-radius: 999px;
+        overflow: hidden;
+        margin-top: 5px;
+      }
+
+      .bear-progress-fill {
+        height: 100%;
+        background: var(--teal);
+        width: ${hasReport ? 100 : progress}%;
+        transition: width .35s ease;
+      }
+
+      .bear-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        background: var(--surface-2);
+        border-left: 1px solid var(--border);
+        border-right: 1px solid var(--border);
+      }
+
+      .bear-messages::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      .bear-messages::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 2px;
+      }
+
+      .bmsg-bear {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        animation: msgIn .35s cubic-bezier(.22,1,.36,1) both;
+      }
+
+      .bmsg-user {
+        display: flex;
+        justify-content: flex-end;
+        animation: msgIn .3s ease both;
+      }
+
+      @keyframes msgIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: .45;
+        }
+      }
+
+      .bmsg-bear-av {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #FDF6EC;
+        border: 1.5px solid #FEF3C7;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        flex-shrink: 0;
+      }
+
+      .bmsg-bear-bubble {
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        border-radius: 18px 18px 18px 4px;
+        padding: 12px 16px;
+        max-width: 78%;
+        font-size: 14px;
+        line-height: 1.7;
+        color: var(--text);
+        box-shadow: 0 1px 4px rgba(0,0,0,.04);
+      }
+
+      .bmsg-bear-bubble strong {
+        color: var(--teal);
+      }
+
+      .bmsg-user-bubble {
+        background: var(--teal);
+        color: white;
+        border-radius: 18px 18px 4px 18px;
+        padding: 11px 16px;
+        max-width: 72%;
+        font-size: 14px;
+        line-height: 1.65;
+        box-shadow: 0 4px 12px rgba(11,184,169,.25);
+      }
+
+      .edit-answer-btn {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+
+      .edit-answer-btn:hover {
+        color: var(--teal);
+        border-color: var(--teal);
+      }
+
+      .bear-options {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-left: 46px;
+        margin-top: 2px;
+        animation: msgIn .35s .05s ease both;
+      }
+
+      .bear-opt-btn {
+        background: var(--surface);
+        border: 1.5px solid var(--border);
+        border-radius: 11px;
+        padding: 10px 16px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text);
+        cursor: pointer;
+        text-align: left;
+        transition: all .18s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .bear-opt-btn:hover {
+        border-color: var(--teal);
+        background: var(--teal-glow);
+        color: var(--teal);
+        transform: translateX(3px);
+      }
+
+      .bear-opt-btn.selected {
+        border-color: var(--teal);
+        background: var(--teal-glow);
+        color: var(--teal);
+      }
+
+      .opt-check {
+        width: 17px;
+        height: 17px;
+        border-radius: 50%;
+        border: 1.5px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        flex-shrink: 0;
+      }
+
+      .bear-opt-btn.selected .opt-check {
+        background: var(--teal);
+        border-color: var(--teal);
+        color: white;
+      }
+
+      .bear-typing {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding: 4px 0;
+      }
+
+      .bear-typing-dot {
+        width: 6px;
+        height: 6px;
+        background: var(--text-faint);
+        border-radius: 50%;
+        animation: typeBounce 1.3s infinite ease-in-out;
+      }
+
+      .bear-typing-dot:nth-child(2) {
+        animation-delay: .22s;
+      }
+
+      .bear-typing-dot:nth-child(3) {
+        animation-delay: .44s;
+      }
+
+      @keyframes typeBounce {
+        0%, 80%, 100% {
+          transform: scale(.4);
+          opacity: .4;
+        }
+        40% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .bear-input-row {
+        display: flex;
+        gap: 10px;
+        padding: 14px 18px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-top: none;
+        border-radius: 0 0 16px 16px;
+      }
+
+      .bear-text-input {
+        flex: 1;
+        background: var(--surface-2);
+        border: 1.5px solid var(--border);
+        border-radius: 24px;
+        padding: 11px 18px;
+        font-family: 'DM Sans', sans-serif;
+        font-size: 14px;
+        color: var(--text);
+        outline: none;
+        resize: none;
+        min-height: 44px;
+        max-height: 100px;
+        line-height: 1.5;
+      }
+
+      .bear-text-input:focus {
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px rgba(11,184,169,.1);
+      }
+
+      .bear-send-btn {
+        width: 44px;
+        height: 44px;
+        background: var(--teal);
+        border: none;
+        border-radius: 50%;
+        color: white;
+        font-size: 18px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .2s;
+        flex-shrink: 0;
+      }
+
+      .bear-send-btn:hover {
+        background: #089E90;
+        transform: scale(1.05);
+      }
+
+      .bear-send-btn:disabled {
+        opacity: .4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .completion-card {
+        background: linear-gradient(135deg, var(--navy), var(--navy-mid));
+        color: white;
+        border-radius: 16px;
+        padding: 24px;
+        margin-left: 46px;
+        box-shadow: var(--shadow-md);
+      }
+
+      .completion-card h3 {
+        font-family: var(--font-display);
+        font-size: 20px;
+        margin-bottom: 8px;
+      }
+
+      .completion-card p {
+        color: rgba(255,255,255,.76);
+        line-height: 1.65;
+        font-size: 14px;
+        margin-bottom: 16px;
+      }
+
+      .completion-card button {
+        width: 100%;
+        border: 0;
+        border-radius: 10px;
+        padding: 12px 18px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .btn-generate-chat {
+        background: var(--teal);
+        color: white;
+        box-shadow: 0 4px 14px rgba(11,184,169,.35);
+      }
+
+      .btn-reset-chat {
+        margin-top: 8px;
+        background: rgba(255,255,255,.12);
+        color: white;
+        border: 1px solid rgba(255,255,255,.18) !important;
+      }
     </style>
 
-    <div class="bear-chat-wrap">
-      <!-- Header -->
+    <section class="bear-chat-wrap">
       <div class="bear-chat-header">
         <div class="bear-chat-header-left">
-          <div class="bear-avatar-lg">🐻</div>
+          <div class="bear-avatar-lg">
+            🐻
+          </div>
+
           <div>
-            <div class="bear-chat-name">Barita 🐾</div>
-            <div class="bear-chat-sub">Your personal Wealth Advisor Bear · Barita Investments</div>
+            <div class="bear-chat-name">
+              Barita AI Chatbot 🐾
+            </div>
+
+            <div class="bear-chat-sub">
+              ${
+                hasReport
+                  ? "Portfolio advisor mode"
+                  : "Guided profiling mode · one question at a time"
+              }
+            </div>
           </div>
         </div>
+
         <div style="display:flex;align-items:center;gap:12px">
-          <div class="bear-online"><div class="bear-online-dot"></div>Online</div>
-          ${profile ? `<span class="profile-badge ${profile.toLowerCase()}" style="font-size:11px">${esc(profile)}</span>` : ''}
+          <div class="bear-online">
+            <div class="bear-online-dot"></div>
+            Online
+          </div>
+
+          ${
+            hasReport && profile
+              ? `<span class="profile-badge ${String(profile).toLowerCase()}" style="font-size:11px">${esc(profile)}</span>`
+              : `
+                <div class="bear-progress">
+                  <span class="bear-mode-pill">
+                    ${progress}% complete
+                  </span>
+
+                  <div class="bear-progress-track">
+                    <div class="bear-progress-fill"></div>
+                  </div>
+                </div>
+              `
+          }
         </div>
       </div>
 
-      <!-- Messages -->
-      <div class="bear-messages" id="bear-msgs">
-        ${!hasReport ? `
-          <div class="bear-no-report">
-            <div class="bear-no-report-icon">🐻</div>
-            <h3>Hi! I'm Barita 🎉</h3>
-            <p>I haven't built your portfolio yet — complete the questionnaire first and I'll be able to give you personalised advice, explain your allocation, answer questions, and more!</p>
-            <button class="btn-action" onclick="window.location.href='/questionnaire'">📋 Start Questionnaire →</button>
-          </div>` : ''}
-      </div>
+      <div class="bear-messages" id="bear-msgs"></div>
 
-      <!-- Input -->
       <div class="bear-input-row">
-        <textarea class="bear-text-input" id="bear-input" placeholder="Ask me anything about your portfolio, investing, or strategy… 🍯" rows="1"></textarea>
-        <button class="bear-send-btn" id="bear-send" ${!hasReport ? 'disabled' : ''}>→</button>
+        <textarea
+          class="bear-text-input"
+          id="bear-input"
+          placeholder="${hasReport ? "Ask me about your portfolio… 🍯" : "Type your answer or choose an option… 🍯"}"
+          rows="1"
+        ></textarea>
+
+        <button class="bear-send-btn" id="bear-send" disabled>
+          →
+        </button>
       </div>
-    </div>
+    </section>
   `;
 
-  // ── Init chat history ──
-  if (hasReport && state.chatHistory.length === 0) {
-    const bProfile = state.report?.behavioral_profile || state.report?.profile || 'Moderate';
-    const conf     = state.report?.confidence?.score;
-    const mc       = state.report?.monte_carlo;
-    const greeting = `🐻 Hey ${esc(state.answers?.first_name || 'there')}! Pawsome to see you on the dashboard! 🎉
+  initBearChat(hasReport);
+}
 
-I've finished building your portfolio. You've been classified as a **${esc(bProfile)}** investor${conf ? ` with a confidence score of **${conf}/100**` : ''}. ${mc ? `Running the numbers through Monte Carlo simulation, there's a **${mc.prob_double}% chance** of doubling your initial investment over 10 years! 🍯` : ''}
+function initBearChat(hasReport) {
 
-Feel free to ask me anything — why I picked specific assets, what volatility means, how to read your report, or anything else on your mind!`;
-    bearAddMessage(greeting, null, false);
-  } else if (hasReport) {
-    state.chatHistory.forEach(m => {
-      if (m.role === 'advisor') bearAddMessage(m.text, null, false);
-      else if (m.role === 'user') bearAddUserMessage(m.text, false);
-    });
-  }
+  const inputEl = $("bear-input");
+  const sendEl = $("bear-send");
 
-  // ── Wire up input ──
-  const inputEl = $('bear-input');
-  const sendEl  = $('bear-send');
   if (!inputEl || !sendEl) return;
 
-  inputEl.addEventListener('input', () => {
+  inputEl.addEventListener("input", () => {
+
     sendEl.disabled = !inputEl.value.trim();
-    inputEl.style.height = 'auto';
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + 'px';
+
+    inputEl.style.height = "auto";
+    inputEl.style.height =
+      Math.min(inputEl.scrollHeight, 100) + "px";
   });
 
-  inputEl.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); bearSend(); }
+  inputEl.addEventListener("keydown", e => {
+
+    if (e.key === "Enter" && !e.shiftKey) {
+
+      e.preventDefault();
+
+      bearSend();
+    }
   });
 
-  sendEl.addEventListener('click', bearSend);
+  sendEl.addEventListener("click", bearSend);
+
+  if (hasReport) {
+    initAdvisorChat();
+  } else {
+    initQuestionnaireChat();
+  }
 }
+// ─── CHATBOT INITIALISATION ─────────────────────────────────────────────────
+function initAdvisorChat() {
 
-// ── Bear message helpers ──────────────────────────────────────────────────────
-function bearAddMessage(text, options, scroll = true) {
-  const wrap = $('bear-msgs');
-  if (!wrap) return;
+  const bProfile =
+    state.report?.behavioral_profile ||
+    state.report?.profile ||
+    "Moderate";
 
-  const row = document.createElement('div');
-  row.className = 'bmsg-bear';
-  row.innerHTML = `
-    <div class="bmsg-bear-av">🐻</div>
-    <div class="bmsg-bear-bubble">${bearFormat(text)}</div>
-  `;
-  wrap.appendChild(row);
+  const conf =
+    state.report?.confidence?.score;
 
-  if (options && options.length) {
-    const tray = document.createElement('div');
-    tray.className = 'bear-options';
-    tray.id = 'bear-options-tray';
-    options.forEach(opt => {
-      const btn = document.createElement('button');
-      btn.className = 'bear-opt-btn';
-      btn.innerHTML = `<span class="opt-check"></span>${esc(opt)}`;
-      btn.addEventListener('click', () => {
-        tray.querySelectorAll('.bear-opt-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        btn.querySelector('.opt-check').textContent = '✓';
-        setTimeout(() => {
-          tray.remove();
-          bearSendText(opt);
-        }, 280);
-      });
-      tray.appendChild(btn);
+  const mc =
+    getMonteCarlo();
+
+  if (!state.chatHistory.length) {
+
+    const greeting = `
+🐻 Hey ${esc(state.answers?.first_name || "there")}! Pawsome — your portfolio is ready.
+
+You are a **${bProfile}** investor${conf ? ` with a confidence score of **${conf}/100**` : ""}.
+
+${mc.prob_goal !== undefined ? `Monte Carlo gives a **${mc.prob_goal}% chance** of reaching your target over the selected horizon.` : ""}
+
+Ask me why I chose an asset, what your risk means, how Monte Carlo works, or how to read your report.
+    `.trim();
+
+    bearAddMessage(greeting, null, false);
+
+    state.chatHistory.push({
+      role: "advisor",
+      text: greeting
     });
-    wrap.appendChild(tray);
+
+    saveLocalSession();
+
+  } else {
+
+    state.chatHistory.forEach((msg, index) => {
+
+      if (msg.role === "advisor" || msg.role === "bear") {
+        bearAddMessage(
+          msg.text,
+          msg.options || null,
+          false,
+          false
+        );
+      }
+
+      if (msg.role === "user") {
+        bearAddUserMessage(
+          msg.text,
+          false,
+          index
+        );
+      }
+    });
   }
 
-  if (scroll) bearScroll();
-}
-
-function bearAddUserMessage(text, scroll = true) {
-  const wrap = $('bear-msgs');
-  if (!wrap) return;
-  const row = document.createElement('div');
-  row.className = 'bmsg-user';
-  row.innerHTML = `<div class="bmsg-user-bubble">${esc(text)}</div>`;
-  wrap.appendChild(row);
-  if (scroll) bearScroll();
-}
-
-function bearShowTyping() {
-  const wrap = $('bear-msgs');
-  if (!wrap) return;
-  const row = document.createElement('div');
-  row.className = 'bmsg-bear'; row.id = 'bear-typing';
-  row.innerHTML = `<div class="bmsg-bear-av">🐻</div><div class="bmsg-bear-bubble"><div class="bear-typing"><div class="bear-typing-dot"></div><div class="bear-typing-dot"></div><div class="bear-typing-dot"></div></div></div>`;
-  wrap.appendChild(row);
   bearScroll();
 }
 
-function bearRemoveTyping() {
-  document.getElementById('bear-typing')?.remove();
-}
+async function initQuestionnaireChat() {
 
-function bearScroll() {
-  const wrap = $('bear-msgs');
-  if (wrap) setTimeout(() => wrap.scrollTop = wrap.scrollHeight, 50);
-}
+  state.chatHistory = state.chatHistory || [];
 
-function bearFormat(text) {
-  return esc(text)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\n/g, '<br/>');
-}
+  if (state.chatHistory.length) {
 
-// ── Bear send ────────────────────────────────────────────────────────────────
-async function bearSend() {
-  const input = $('bear-input');
-  if (!input) return;
-  const text = input.value.trim();
-  if (!text) return;
-  input.value = '';
-  input.style.height = 'auto';
-  $('bear-send').disabled = true;
-  bearSendText(text);
-}
+    state.chatHistory.forEach((msg, index) => {
 
-async function bearSendText(text) {
-  if (!text.trim()) return;
+      if (msg.role === "bear") {
+        bearAddMessage(
+          msg.text,
+          msg.options || null,
+          false,
+          false
+        );
+      }
 
-  bearAddUserMessage(text);
-  state.chatHistory.push({ role: 'user', text });
+      if (msg.role === "user") {
+        bearAddUserMessage(
+          msg.text,
+          false,
+          index
+        );
+      }
+    });
 
-  // Clear any option trays
-  document.getElementById('bear-options-tray')?.remove();
+    updateChatProgressUI();
+    bearScroll();
+
+    return;
+  }
 
   bearShowTyping();
 
   try {
-    const data = await callBackend('/chat', {
-      message: text,
-      answers: state.answers,
-      report:  state.report,
-      history: state.chatHistory.filter(m => !m.thinking).slice(-10),
-    });
-    bearRemoveTyping();
-    const reply = data.reply || "Sorry, I had a little hiccup! 🐻 Try again?";
-    bearAddMessage(reply, null);
-    state.chatHistory.push({ role: 'advisor', text: reply });
-  } catch(e) {
-    bearRemoveTyping();
-    bearAddMessage(`Oops! Something went wrong 🐾 (${e.message}). Make sure the backend is running!`, null);
-  }
 
-  const sendBtn = $('bear-send');
-  if (sendBtn) sendBtn.disabled = false;
+    const result =
+      await callQuestionnaireBot(
+        "",
+        "intro"
+      );
+
+    bearRemoveTyping();
+
+    const msg =
+      result?.message ||
+      "🐻 Hi! I'm Barita. Let's build your personalised investment profile. What is your first name?";
+
+    bearAddMessage(
+      msg,
+      result?.options || null
+    );
+
+    state.chatHistory.push({
+      role: "bear",
+      text: msg,
+      options: result?.options || null
+    });
+
+    saveLocalSession();
+
+  } catch (err) {
+
+    bearRemoveTyping();
+
+    bearAddMessage(
+      `🐻 I had trouble starting the questionnaire (${err.message}). Check that Flask is running, then type your first name to continue.`,
+      null
+    );
+  }
 }
 
-// Legacy stubs — kept so nothing crashes if called from elsewhere
-function appendMessage(msg) { /* replaced by bear chat */ }
-async function sendMessage() { await bearSend(); }
+async function callQuestionnaireBot(
+  message,
+  stage = "questionnaire"
+) {
 
-// ── REPORTS VIEW ──
-async function renderReportsView(area) {
-  area.innerHTML = `
-    <div class="panel-header" style="padding:0 0 16px"><div class="panel-title">Your Reports</div></div>
-    <div class="report-list" id="report-list">
-      <div style="color:var(--text-faint);font-size:14px;padding:20px 0">Loading…</div>
+  const data =
+    await callBackend(
+      "/chat_questionnaire",
+      {
+        message,
+        history: state.chatHistory.slice(-12),
+        answers: state.answers || {},
+        stage
+      }
+    );
+
+  return data.parsed || data;
+}
+
+// ─── CHAT UI HELPERS ────────────────────────────────────────────────────────
+function bearAddMessage(
+  text,
+  options = null,
+  scroll = true,
+  save = true
+) {
+
+  const wrap = $("bear-msgs");
+
+  if (!wrap) return;
+
+  const row =
+    document.createElement("div");
+
+  row.className = "bmsg-bear";
+
+  row.innerHTML = `
+    <div class="bmsg-bear-av">
+      🐻
+    </div>
+
+    <div class="bmsg-bear-bubble">
+      ${bearFormat(text)}
     </div>
   `;
 
-  const reports = await loadReportHistory();
-  const list    = $('report-list');
+  wrap.appendChild(row);
 
-  if (!reports.length && !state.report) {
-    list.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📄</div>
-        <div class="empty-h">No Reports Yet</div>
-        <p class="empty-p">Complete the questionnaire to generate your first portfolio report.</p>
-        <button class="btn-action" onclick="openQuestionnaire()">Start Questionnaire →</button>
-      </div>`;
+  if (options && options.length) {
+
+    const tray =
+      document.createElement("div");
+
+    tray.className = "bear-options";
+    tray.id = "bear-options-tray";
+
+    options.forEach(opt => {
+
+      const btn =
+        document.createElement("button");
+
+      btn.className = "bear-opt-btn";
+
+      btn.innerHTML = `
+        <span class="opt-check"></span>
+        ${esc(opt)}
+      `;
+
+      btn.addEventListener("click", () => {
+
+        tray
+          .querySelectorAll(".bear-opt-btn")
+          .forEach(b => b.classList.remove("selected"));
+
+        btn.classList.add("selected");
+
+        btn
+          .querySelector(".opt-check")
+          .textContent = "✓";
+
+        setTimeout(() => {
+
+          tray.remove();
+
+          bearSendText(opt);
+
+        }, 240);
+      });
+
+      tray.appendChild(btn);
+    });
+
+    wrap.appendChild(tray);
+  }
+
+  if (scroll) {
+    bearScroll();
+  }
+}
+
+function bearAddUserMessage(
+  text,
+  scroll = true,
+  historyIndex = null
+) {
+
+  const wrap = $("bear-msgs");
+
+  if (!wrap) return;
+
+  const row =
+    document.createElement("div");
+
+  row.className = "bmsg-user";
+
+  const indexAttr =
+    historyIndex !== null
+      ? `data-history-index="${historyIndex}"`
+      : "";
+
+  row.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;justify-content:flex-end">
+      <button
+        class="edit-answer-btn"
+        ${indexAttr}
+      >
+        Edit
+      </button>
+
+      <div class="bmsg-user-bubble">
+        ${esc(text)}
+      </div>
+    </div>
+  `;
+
+  wrap.appendChild(row);
+
+  const btn =
+    row.querySelector(".edit-answer-btn");
+
+  if (btn) {
+
+    btn.addEventListener("click", () => {
+
+      const idx =
+        btn.dataset.historyIndex
+          ? Number(btn.dataset.historyIndex)
+          : state.chatHistory.findIndex(m => m.role === "user" && m.text === text);
+
+      editAnswerAtIndex(idx);
+    });
+  }
+
+  if (scroll) {
+    bearScroll();
+  }
+}
+
+function bearShowTyping() {
+
+  const wrap = $("bear-msgs");
+
+  if (!wrap) return;
+
+  const row =
+    document.createElement("div");
+
+  row.className = "bmsg-bear";
+  row.id = "bear-typing";
+
+  row.innerHTML = `
+    <div class="bmsg-bear-av">
+      🐻
+    </div>
+
+    <div class="bmsg-bear-bubble">
+      <div class="bear-typing">
+        <div class="bear-typing-dot"></div>
+        <div class="bear-typing-dot"></div>
+        <div class="bear-typing-dot"></div>
+      </div>
+    </div>
+  `;
+
+  wrap.appendChild(row);
+
+  bearScroll();
+}
+
+function bearRemoveTyping() {
+
+  document
+    .getElementById("bear-typing")
+    ?.remove();
+}
+
+function bearScroll() {
+
+  const wrap = $("bear-msgs");
+
+  if (wrap) {
+
+    setTimeout(() => {
+      wrap.scrollTop = wrap.scrollHeight;
+    }, 45);
+  }
+}
+
+function bearFormat(text) {
+
+  return esc(text)
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\n/g, "<br/>");
+}
+
+// ─── CHAT SEND LOGIC ────────────────────────────────────────────────────────
+async function bearSend() {
+
+  const input =
+    $("bear-input");
+
+  if (!input) return;
+
+  const text =
+    input.value.trim();
+
+  if (!text) return;
+
+  input.value = "";
+  input.style.height = "auto";
+
+  const sendBtn =
+    $("bear-send");
+
+  if (sendBtn) {
+    sendBtn.disabled = true;
+  }
+
+  await bearSendText(text);
+}
+
+async function bearSendText(text) {
+
+  if (!text.trim()) return;
+
+  const userIndex = state.chatHistory.length;
+
+  bearAddUserMessage(text, true, userIndex);
+
+  state.chatHistory.push({
+    role: "user",
+    text
+  });
+
+  saveLocalSession();
+
+  document.getElementById("bear-options-tray")?.remove();
+
+  bearShowTyping();
+
+  try {
+
+    if (!state.report?.allocations?.length) {
+
+      const result = await callQuestionnaireBot(
+        text,
+        "questionnaire"
+      );
+
+      bearRemoveTyping();
+
+      if (
+        result?.extracted_answer &&
+        typeof result.extracted_answer === "object"
+      ) {
+        Object.assign(state.answers, result.extracted_answer);
+
+        saveLocalSession();
+
+        await saveSession();
+      }
+
+      const reply =
+        result?.message ||
+        "Pawsome — got it. Let's keep going!";
+
+      bearAddMessage(
+        reply,
+        result?.options || null
+      );
+
+      state.chatHistory.push({
+        role: "bear",
+        text: reply,
+        options: result?.options || null
+      });
+
+      saveLocalSession();
+
+      if (result?.stage === "complete") {
+        addChatCompletionCard();
+      }
+
+      updateChatProgressUI();
+
+    } else {
+
+      const data = await callBackend(
+        "/chat",
+        {
+          message: text,
+          answers: state.answers,
+          report: state.report,
+          history: state.chatHistory.slice(-10)
+        }
+      );
+
+      const reply =
+        data?.reply ||
+        "🐻 I’m not sure how to answer that. Please ask me something about investing, risk, allocation, returns, or your portfolio.";
+
+      bearRemoveTyping();
+
+      bearAddMessage(reply, null);
+
+      state.chatHistory.push({
+        role: "advisor",
+        text: reply
+      });
+
+      saveLocalSession();
+
+      await saveSession();
+    }
+
+  } catch (err) {
+
+    bearRemoveTyping();
+
+    bearAddMessage(
+      `Oops! Something went wrong 🐾 (${err.message}). Make sure the backend is running!`,
+      null
+    );
+  }
+
+  const sendBtn = $("bear-send");
+
+  if (sendBtn) {
+    sendBtn.disabled = true;
+  }
+}
+
+// ─── EDIT ANSWERS ────────────────────────────────────────────────────────────
+async function editAnswerAtIndex(historyIndex) {
+  const msg = state.chatHistory[historyIndex];
+
+  if (!msg || msg.role !== "user") return;
+
+  const newAnswer = prompt("Edit your answer:", msg.text);
+
+  if (!newAnswer || !newAnswer.trim()) return;
+
+  const cleanAnswer = newAnswer.trim();
+
+  // Find which question this user message belonged to
+  const userMessagesBeforeThis = state.chatHistory
+    .slice(0, historyIndex + 1)
+    .filter(m => m.role === "user");
+
+  const questionIndex = userMessagesBeforeThis.length - 1;
+  const editedQuestion = QUESTION_FLOW[questionIndex];
+
+  if (!editedQuestion) return;
+
+  // Keep chat only up to BEFORE the edited user message
+  state.chatHistory = state.chatHistory.slice(0, historyIndex);
+
+  // Rebuild answers from the remaining user messages
+  const remainingUserMessages = state.chatHistory.filter(m => m.role === "user");
+
+  state.answers = {};
+
+  remainingUserMessages.forEach((answerMsg, index) => {
+    const q = QUESTION_FLOW[index];
+
+    if (q) {
+      state.answers[q.field] = answerMsg.text;
+    }
+  });
+
+  // Save the edited answer into the correct field
+  state.answers[editedQuestion.field] = cleanAnswer;
+
+  // Remove old portfolio because the profile changed
+  state.report = null;
+
+  // Add the edited message back in place
+  state.chatHistory.push({
+    role: "user",
+    text: cleanAnswer,
+    edited: true
+  });
+
+  saveLocalSession();
+  await saveSession();
+
+  renderView("advisor");
+
+  const nextQ = QUESTION_FLOW[questionIndex + 1];
+
+  if (nextQ) {
+    const reply = `Got it — I updated your answer. 🐻✨\n\nNext question: ${nextQ.question}`;
+
+    bearAddMessage(reply, nextQ.options || null);
+
+    state.chatHistory.push({
+      role: "bear",
+      text: reply,
+      options: nextQ.options || null
+    });
+
+    saveLocalSession();
+    await saveSession();
+  } else {
+    addChatCompletionCard();
+  }
+}
+
+// ─── CHAT PROGRESS + COMPLETION ─────────────────────────────────────────────
+function updateChatProgressUI() {
+
+  const pct =
+    Math.min(
+      100,
+      Math.round(
+        (Object.keys(state.answers || {}).length / 24) * 100
+      )
+    );
+
+  const pill =
+    document.querySelector(".bear-mode-pill");
+
+  const fill =
+    document.querySelector(".bear-progress-fill");
+
+  if (pill) {
+    pill.textContent = `${pct}% complete`;
+  }
+
+  if (fill) {
+    fill.style.width = pct + "%";
+  }
+}
+
+function addChatCompletionCard() {
+
+  const wrap =
+    $("bear-msgs");
+
+  if (
+    !wrap ||
+    document.getElementById("chat-completion-card")
+  ) {
     return;
   }
 
-  list.innerHTML = '';
+  const card =
+    document.createElement("div");
 
-  // Show current report first if exists
-  if (state.report) {
-    const item = el('div', 'report-item');
-    item.innerHTML = `
-      <div class="report-item-left">
-        <h4>Portfolio Report — <span class="profile-badge ${state.report.profile.toLowerCase()}">${state.report.profile}</span></h4>
-        <p>Current session · Click to download PDF</p>
-      </div>
-      <button class="btn-dl" id="dl-current">⬇ Download PDF</button>
-    `;
-    list.appendChild(item);
-    item.querySelector('#dl-current').addEventListener('click', (e) => { e.stopPropagation(); downloadPDF('latest'); });
-  }
+  card.className = "completion-card";
+  card.id = "chat-completion-card";
 
-  reports.forEach(r => {
-    const date = r.createdAt?.toDate ? r.createdAt.toDate().toLocaleDateString('en-JM', { dateStyle: 'medium' }) : '—';
-    const item = el('div', 'report-item');
-    item.innerHTML = `
-      <div class="report-item-left">
-        <h4><span class="profile-badge ${r.profile?.toLowerCase()}">${r.profile}</span></h4>
-        <p>${date}</p>
-      </div>
-      <button class="btn-dl">⬇ Download PDF</button>
-    `;
-    item.querySelector('.btn-dl').addEventListener('click', (e) => { e.stopPropagation(); downloadPDF(r.id); });
-    list.appendChild(item);
-  });
-}
+  card.innerHTML = `
+    <h3>
+      🎉 Pawsome! Your profile is complete.
+    </h3>
 
-// ─── QUESTIONNAIRE ────────────────────────────────────────────────────────────
-// Flatten sections into individual questions, respecting showIf
-function getActiveQuestions() {
-  const qs = [];
-  SECTIONS.forEach(sec => {
-    sec.questions.forEach(q => {
-      if (!q.showIf || q.showIf(state.answers)) {
-        qs.push({ ...q, sectionTitle: sec.title });
-      }
-    });
-  });
-  return qs;
-}
+    <p>
+      I have enough information to build your personalised portfolio using your goals, risk comfort, currency needs, resilience, and investment style.
+    </p>
 
-// ─── TWO-PAGE QUESTIONNAIRE ──────────────────────────────────────────────────
-// Page 1: Personal info (first_name, last_name, age) — shown together
-// Page 2: All remaining questions — full scrollable page
-// state.qPage tracks which page we're on (1 or 2)
+    <button
+      class="btn-generate-chat"
+      id="btn-chat-generate"
+    >
+      🚀 Build My Portfolio
+    </button>
 
-window.openQuestionnaire = function() {
-  window.location.href = '/questionnaire';
-};
-
-function closeQuestionnaire() { $('modal-questionnaire').classList.add('hidden'); }
-
-function getProfileQuestions() {
-  const profileSection = SECTIONS.find(s => s.id === 'profile');
-  return profileSection ? profileSection.questions : [];
-}
-
-function getMainQuestions() {
-  const qs = [];
-  SECTIONS.forEach(sec => {
-    if (sec.id === 'profile') return; // skip profile — shown on page 1
-    sec.questions.forEach(q => {
-      if (!q.showIf || q.showIf(state.answers)) {
-        qs.push({ ...q, sectionTitle: sec.title });
-      }
-    });
-  });
-  return qs;
-}
-
-function renderQPage() {
-  if (state.qPage === 1) renderPage1();
-  else renderPage2();
-}
-
-// ── PAGE 1: Personal info (all 3 on one page) ──────────────────────────────
-function renderPage1() {
-  const profileQs = getProfileQuestions();
-  const total = 2; // 2 pages total
-
-  $('q-progress-fill').style.width = '0%';
-  $('q-progress-pct').textContent  = '0%';
-  $('q-btn-back').style.visibility = 'hidden';
-  $('q-btn-next').textContent = 'Continue →';
-
-  const body = $('q-body');
-  body.innerHTML = `
-    <div class="q-section-label">Page 1 of 2 · Your Profile</div>
-    <div class="q-text" style="margin-bottom:6px">Let's start with a few details about you.</div>
-    <div class="q-hint">This helps us personalise your portfolio report.</div>
-    <div id="profile-fields" style="display:flex;flex-direction:column;gap:16px;margin-top:20px"></div>
+    <button
+      class="btn-reset-chat"
+      id="btn-chat-reset"
+    >
+      Start over
+    </button>
   `;
 
-  const fieldsWrap = $('profile-fields');
-  profileQs.forEach(q => {
-    const wrap = el('div', '');
-    wrap.innerHTML = `
-      <label style="font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em">${esc(q.text)}</label>
-      <input
-        class="q-input"
-        id="profile-input-${q.id}"
-        type="${q.id === 'age' ? 'number' : 'text'}"
-        placeholder="${esc(q.placeholder || '')}"
-        value="${esc(state.answers[q.id] || '')}"
-        min="${q.id === 'age' ? '16' : ''}"
-        max="${q.id === 'age' ? '100' : ''}"
-        style="width:100%"
-      />
-    `;
-    fieldsWrap.appendChild(wrap);
+  wrap.appendChild(card);
 
-    const input = wrap.querySelector(`#profile-input-${q.id}`);
-    input.addEventListener('input', e => {
-      state.answers[q.id] = e.target.value.trim();
-      checkPage1Complete();
+  bearScroll();
+
+  document
+    .getElementById("btn-chat-generate")
+    ?.addEventListener(
+      "click",
+      generatePortfolioFromChat
+    );
+
+  document
+    .getElementById("btn-chat-reset")
+    ?.addEventListener("click", () => {
+
+      state.answers = {};
+      state.report = null;
+      state.chatHistory = [];
+      state.qStep = 0;
+
+      saveLocalSession();
+
+      renderView("advisor");
     });
-  });
-
-  checkPage1Complete();
 }
 
-function checkPage1Complete() {
-  const profileQs = getProfileQuestions();
-  const allFilled = profileQs.every(q => state.answers[q.id] && state.answers[q.id].toString().trim());
-  $('q-btn-next').disabled = !allFilled;
-}
+// ─── DETERMINISTIC ADVISOR REPLIES ──────────────────────────────────────────
+function generateDeterministicAdvisorReply(message) {
+  const msg = String(message || "").toLowerCase();
+  const report = state.report || {};
+  const metrics = report.metrics || {};
+  const mc = getMonteCarlo();
 
-// ── PAGE 2: Full scrollable questionnaire ─────────────────────────────────
-function renderPage2() {
-  const mainQs = getMainQuestions();
+  const profile =
+    report.behavioral_profile ||
+    report.profile ||
+    "Moderate";
 
-  $('q-progress-fill').style.width = '50%';
-  $('q-progress-pct').textContent  = '50%';
-  $('q-btn-back').style.visibility = 'visible';
-  $('q-btn-next').textContent = 'Submit & Generate Portfolio ✓';
-  $('q-btn-next').disabled = false;
+  const goal =
+    state.answers?.primary_goal ||
+    "your stated financial goal";
 
-  const body = $('q-body');
-  body.innerHTML = `
-    <div class="q-section-label">Page 2 of 2 · Investment Profile</div>
-    <div class="q-text" style="margin-bottom:6px">Complete your investment profile below.</div>
-    <div class="q-hint">Scroll through and answer all questions. Required questions are marked.</div>
-    <div id="main-questions" style="margin-top:20px;display:flex;flex-direction:column;gap:28px"></div>
-  `;
+  const horizon =
+    state.answers?.time_horizon ||
+    "your selected time horizon";
 
-  const container = $('main-questions');
-  let currentSection = '';
+  const topAssets = (report.allocations || [])
+    .slice(0, 4)
+    .map(a => `${a.label || a.ticker} (${pctFmt(a.pct)})`)
+    .join(", ");
 
-  mainQs.forEach((q, idx) => {
-    // Section divider
-    if (q.sectionTitle !== currentSection) {
-      currentSection = q.sectionTitle;
-      const divider = el('div', '');
-      divider.innerHTML = `
-        <div style="font-size:11px;font-weight:700;letter-spacing:0.10em;text-transform:uppercase;
-                    color:var(--teal);padding:8px 0 4px;border-top:1px solid var(--border-light);
-                    margin-top:4px">
-          ${esc(currentSection)}
-        </div>
-      `;
-      container.appendChild(divider);
-    }
+  const method =
+    metrics.optimization_method ||
+    metrics.mvo_strategy ||
+    report.mvo_strategy ||
+    "MVO-based optimisation";
 
-    const qWrap = el('div', '');
-    qWrap.innerHTML = `
-      <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:${q.hint ? '4px' : '12px'};line-height:1.45">
-        ${esc(q.text)}
-      </div>
-      ${q.hint ? `<div class="q-hint" style="margin-bottom:12px">${esc(q.hint)}</div>` : ''}
-      <div id="q2-wrap-${q.id}"></div>
-    `;
-    container.appendChild(qWrap);
+  if (msg.includes("why") || msg.includes("choose") || msg.includes("selected")) {
+    return `
+I selected this portfolio because your answers mapped you to a **${profile}** investor profile, with your main goal being **${goal}** and a time horizon of **${horizon}**.
 
-    const wrap = qWrap.querySelector(`#q2-wrap-${q.id}`);
-    renderQuestionInput(q, wrap);
-  });
+The engine did not simply pick the highest-return assets. It compared expected return, volatility, diversification, asset class balance, and how each asset interacts with the others. The selected method was **${method}**, meaning the portfolio was chosen for its risk-adjusted performance rather than return alone.
 
-  // Update progress on scroll
-  const modal = document.querySelector('.modal-q');
-  if (modal) {
-    modal.addEventListener('scroll', updatePage2Progress);
+Your top allocations are: **${topAssets || "the selected assets"}**.
+
+In simple terms: the portfolio tries to give you enough growth for your goal while keeping the risk level aligned with what you said you could realistically tolerate.
+    `.trim();
   }
-}
 
-function updatePage2Progress() {
-  const modal = document.querySelector('.modal-q');
-  if (!modal) return;
-  const scrolled = modal.scrollTop / (modal.scrollHeight - modal.clientHeight);
-  const pct = Math.round(50 + scrolled * 50);
-  $('q-progress-fill').style.width = pct + '%';
-  $('q-progress-pct').textContent  = pct + '%';
-}
+  if (msg.includes("mvo") || msg.includes("mean") || msg.includes("variance") || msg.includes("optim")) {
+    return `
+MVO means **Mean-Variance Optimisation**. It tries to find the best balance between expected return and risk.
 
-function renderQuestionInput(q, wrap) {
-  if (q.type === 'single') {
-    const opts = el('div', 'q-options');
-    q.options.forEach(opt => {
-      const btn = el('button', `q-opt${state.answers[q.id] === opt ? ' selected' : ''}`);
-      btn.textContent = opt;
-      btn.addEventListener('click', () => {
-        state.answers[q.id] = opt;
-        opts.querySelectorAll('.q-opt').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-      });
-      opts.appendChild(btn);
-    });
-    wrap.appendChild(opts);
+For your portfolio, the system considered:
+- expected return: **${metrics.expected_return || "not available"}**
+- volatility: **${metrics.volatility || "not available"}**
+- Sharpe ratio: **${metrics.sharpe_ratio || "not available"}**
+- asset correlations and diversification
 
-  } else if (q.type === 'multi') {
-    const selected = state.answers[q.id] || [];
-    const opts = el('div', 'q-options');
-    q.options.forEach(opt => {
-      const btn = el('button', `q-opt${selected.includes(opt) ? ' selected' : ''}`);
-      btn.textContent = opt;
-      btn.addEventListener('click', () => {
-        const cur = state.answers[q.id] || [];
-        if (cur.includes(opt)) { state.answers[q.id] = cur.filter(x => x !== opt); btn.classList.remove('selected'); }
-        else                   { state.answers[q.id] = [...cur, opt];              btn.classList.add('selected'); }
-      });
-      opts.appendChild(btn);
-    });
-    wrap.appendChild(opts);
-
-  } else if (q.type === 'text') {
-    const input = el('input', 'q-input');
-    input.type        = 'text';
-    input.placeholder = q.placeholder || '';
-    input.value       = state.answers[q.id] || '';
-    input.style.width = '100%';
-    input.addEventListener('input', e => { state.answers[q.id] = e.target.value; });
-    wrap.appendChild(input);
-
-  } else if (q.type === 'textarea') {
-    const ta = el('textarea', 'q-input q-textarea');
-    ta.placeholder = q.placeholder || '';
-    ta.value       = state.answers[q.id] || '';
-    ta.style.width = '100%';
-    ta.addEventListener('input', e => { state.answers[q.id] = e.target.value; });
-    wrap.appendChild(ta);
+A high-return asset is not automatically selected if it adds too much volatility or overlaps too heavily with other assets. That is why MVO is useful: it looks at the portfolio as a whole, not just each asset individually.
+    `.trim();
   }
-}
 
-function isAnswered(q) {
-  if (q.type === 'multi' || q.type === 'textarea') return true;
-  return !!state.answers[q.id];
-}
+  if (msg.includes("risk") || msg.includes("volatility") || msg.includes("loss")) {
+    return `
+Your risk profile is **${profile}**, so the system adjusted the portfolio to match your comfort with uncertainty and possible losses.
 
-async function advanceQuestion() {
-  if (state.qPage === 1) {
-    state.qPage = 2;
-    renderQPage();
-  } else {
-    closeQuestionnaire();
-    await submitQuestionnaire();
+The portfolio volatility is **${metrics.volatility || "not available"}**. Volatility estimates how much the portfolio may fluctuate over time. Lower volatility usually means a smoother ride, while higher volatility may offer more growth potential but with larger swings.
+
+Your answers about loss tolerance, reaction to a 20% drop, financial runway, debt, and investment experience all helped shape this classification.
+
+So this is not just a generic risk label — it is based on your responses and then reflected in the final allocation.
+    `.trim();
   }
+
+  if (msg.includes("monte") || msg.includes("simulation") || msg.includes("probability") || msg.includes("goal")) {
+    return `
+Monte Carlo simulation stress-tests the portfolio across many possible future outcomes instead of assuming one perfect path.
+
+For your portfolio:
+- goal probability: **${mc.prob_goal !== undefined ? mc.prob_goal + "%" : "not available"}**
+- median final wealth: **${moneyFmt(mc.median_final)}**
+- downside estimate: **${moneyFmt(mc.p10_final || mc.expected_shortfall_10pct)}**
+- upside estimate: **${moneyFmt(mc.p90_final)}**
+
+This helps answer: “If markets behave in many different ways, how often does this portfolio still support the client’s goal?”
+
+That makes the recommendation more realistic than using expected return alone.
+    `.trim();
+  }
+
+  if (msg.includes("asset") || msg.includes("allocation") || msg.includes("money")) {
+    return `
+Your money is mainly allocated across: **${topAssets || "the selected portfolio assets"}**.
+
+Each allocation was chosen based on its role:
+- fixed income/cash improves stability and liquidity
+- equities support long-term growth
+- real estate or alternatives may improve diversification
+- currency exposure helps match earning/spending patterns
+
+The key idea is not only “what asset looks good,” but “what combination of assets fits you best.” That is why the allocation is diversified instead of concentrated in one investment.
+    `.trim();
+  }
+
+  if (msg.includes("remember") || msg.includes("my answers") || msg.includes("what did i say")) {
+    return `
+Yes — I am using your saved questionnaire responses in this session.
+
+Here is what I currently remember:
+- goal: **${state.answers?.primary_goal || "not answered"}**
+- risk reaction: **${state.answers?.drop_reaction || "not answered"}**
+- maximum loss tolerance: **${state.answers?.max_loss || "not answered"}**
+- income runway: **${state.answers?.income_loss_runway || "not answered"}**
+- earning currency: **${state.answers?.earn_currency || "not answered"}**
+- spending currency: **${state.answers?.spend_currency || "not answered"}**
+- investment style: **${state.answers?.invest_style || "not answered"}**
+
+Those answers are used to shape both the risk profile and the portfolio recommendation.
+    `.trim();
+  }
+if (msg.includes("divers") || msg.includes("correlation") || msg.includes("covariance")) {
+  return `
+Diversification is important because assets do not all move in the same way. The system uses covariance/correlation information to avoid building a portfolio where every asset behaves too similarly.
+
+If two assets are highly correlated, adding both may not reduce risk much. If assets have lower correlation, the portfolio can sometimes reduce volatility without sacrificing too much expected return.
+
+That is why the recommendation is not only based on the highest-return assets. It considers how each asset contributes to the total portfolio risk.
+  `.trim();
 }
 
-async function submitQuestionnaire() {
-  // Show loading on portfolio view
-  switchView('portfolio');
-  $('view-area').innerHTML = `
-    <div class="panel">
-      <div class="empty-state">
-        <div class="empty-icon">⚙️</div>
-        <div class="empty-h">Building Your Portfolio…</div>
-        <p class="empty-p">Our AI is analysing your profile and generating your personalised allocation.</p>
-        <div class="thinking" style="justify-content:center;margin-top:12px"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-      </div>
-    </div>`;
+if (msg.includes("black") || msg.includes("litterman") || msg.includes("views")) {
+  return `
+Black-Litterman-style adjustment helps combine market-based expectations with investor or strategy views.
+
+In this system, it acts as a controlled tilt. Instead of blindly trusting raw expected returns, the engine adjusts assumptions based on the client’s goal, risk profile, sector preferences, and market conditions.
+
+This makes the allocation more stable than simply ranking assets by expected return.
+  `.trim();
+}
+
+if (msg.includes("hrp") || msg.includes("hierarchical") || msg.includes("cluster")) {
+  return `
+HRP means Hierarchical Risk Parity. It groups assets based on how similarly they behave, then allocates risk across those groups.
+
+This is useful because traditional optimisation can become unstable when assets are highly correlated or when the covariance matrix is noisy.
+
+In this project, HRP works as a diversification check alongside MVO and Black-Litterman-style tilting.
+  `.trim();
+}
+
+// Greetings handling
+if (
+  msg.includes("hi") ||
+  msg.includes("hello") ||
+  msg.includes("hey")
+) {
+  return `
+Hey ${state.answers?.first_name || "there"}! 🐻
+
+I’m Barita Bear, your AI investment advisor. I can explain:
+- your portfolio allocation
+- risk profile
+- Monte Carlo simulation
+- MVO optimisation
+- diversification
+- expected return and volatility
+- why specific assets were selected
+
+Ask me anything about your portfolio 🍯
+  `.trim();
+}
+
+// Disclaimer handling
+if (
+  msg.includes("financial advice") ||
+  msg.includes("guarantee") ||
+  msg.includes("guaranteed")
+) {
+  return `
+This platform is designed as an educational and decision-support tool, not as guaranteed financial advice.
+
+The portfolio recommendations are generated using optimisation models, historical market relationships, behavioural profiling, and Monte Carlo simulations. However, real markets are uncertain and future returns cannot be guaranteed.
+
+Users should still consult a licensed financial advisor before making major investment decisions.
+  `.trim();
+}
+
+
+// Fallback generic reply for unrecognized questions.
+  return `
+Pawsome question 🐻
+
+Based on your saved profile, I would interpret this through your **${profile}** investor classification and your goal of **${goal}**.
+
+The portfolio engine considers:
+- questionnaire responses
+- expected returns
+- volatility
+- covariance/correlation effects
+- diversification
+- MVO optimisation
+- HRP clustering
+- Monte Carlo validation
+- behavioural finance indicators
+
+The selected allocation is therefore not based on a single factor, but on how the assets work together as a portfolio.
+
+For this client, the recommendation is mainly supported by:
+- risk profile: **${profile}**
+- expected return: **${metrics.expected_return || "not available"}**
+- volatility: **${metrics.volatility || "not available"}**
+- Sharpe ratio: **${metrics.sharpe_ratio || "not available"}**
+- top allocations: **${topAssets || "the selected portfolio assets"}**
+
+If your question relates to suitability, the key principle is that the system tries to balance return potential with the client’s actual risk tolerance, liquidity needs, behavioural responses, and financial goals.
+`.trim();
+}
+
+// ─── GENERATE PORTFOLIO FROM CHAT ───────────────────────────────────────────
+async function generatePortfolioFromChat() {
+
+  const btn =
+    document.getElementById("btn-chat-generate");
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Building your portfolio… 🐾";
+  }
+
+  bearAddMessage(
+    "Bear with me while I run the portfolio engine, diversification checks, MVO, HRP, Black-Litterman-style views, Monte Carlo, and your personalised advisory note. 🐻📊",
+    null
+  );
+
+  bearShowTyping();
 
   try {
-    const data = await callBackend('/analyse', { answers: state.answers });
+
+    const data =
+      await callBackend(
+        "/analyse",
+        {
+          answers: state.answers
+        }
+      );
+
+    bearRemoveTyping();
+
     state.report = data;
 
-    // Save to Firestore
-    await saveSession();
-    await addDoc(collection(db, 'users', state.user.uid, 'reports'), {
-      profile:      data.profile,
-      profile_label:data.profile_label,
-      metrics:      data.metrics,
-      allocations:  data.allocations,
-      answers:      state.answers,
-      createdAt:    serverTimestamp(),
+    saveLocalSession();
+
+    try {
+      await saveSession();
+    } catch (err) {
+      console.warn(
+        "Portfolio generated, but Firestore save was skipped:",
+        err.message
+      );
+    }
+
+    bearAddMessage(
+      `🎉 Your portfolio is ready! You are a **${data.behavioral_profile || data.profile}** investor with a confidence score of **${data.confidence?.score || "—"}/100**. I’m taking you to your portfolio dashboard now. 🍯`,
+      null
+    );
+
+    state.chatHistory.push({
+      role: "bear",
+      text: "Portfolio generated successfully."
     });
 
-    renderView('portfolio');
-  } catch(e) {
-    $('view-area').innerHTML = `
-      <div class="panel">
-        <div class="empty-state">
-          <div class="empty-icon">⚠️</div>
-          <div class="empty-h">Analysis Failed</div>
-          <p class="empty-p">Could not connect to the backend: ${esc(e.message)}<br/><br/>Make sure your Flask server is running and BACKEND_URL is correct in app.js.</p>
-          <button class="btn-action" onclick="switchView('questionnaire')">← Back</button>
-        </div>
-      </div>`;
+    saveLocalSession();
+
+    setTimeout(() => {
+      switchView("portfolio");
+    }, 1200);
+
+  } catch (err) {
+
+    bearRemoveTyping();
+
+    bearAddMessage(
+      `Oh no — I could not build the portfolio yet (${err.message}). Please check the backend terminal for the exact error and try again.`,
+      null
+    );
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "🚀 Try Again";
+    }
   }
 }
 
-// ─── POST-LOAD MINI ALLOC ─────────────────────────────────────────────────────
-function maybeRenderMiniAlloc() {
-  const el2 = $('mini-alloc');
-  if (!el2 || !state.report?.allocations) return;
-  state.report.allocations.slice(0,6).forEach(a => {
-    const row = el('div', 'alloc-row-item');
-    row.innerHTML = `
-      <div class="alloc-dot" style="background:${a.color||'#0BB8A9'}"></div>
-      <div style="flex:1"><div class="alloc-name" style="font-size:12px">${esc(a.label)}</div></div>
-      <div class="alloc-bar-outer"><div class="alloc-bar-inner" style="background:${a.color||'#0BB8A9'}" data-pct="${a.pct}"></div></div>
-      <div class="alloc-pct">${a.pct}%</div>
-    `;
-    el2.appendChild(row);
-  });
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.querySelectorAll('.alloc-bar-inner').forEach(b => { b.style.width = b.dataset.pct + '%'; });
-  }));
+// ─── REPORTS + PDF ──────────────────────────────────────────────────────────
+async function downloadPDF(reportId = "latest") {
+
+  try {
+
+    const token =
+      state.firebaseToken ||
+      await state.user.getIdToken();
+
+    const res =
+      await fetch(
+        `${BACKEND_URL}/generate_report`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            answers: state.answers,
+            report: state.report,
+            report_id: reportId
+          })
+        }
+      );
+
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    const blob =
+      await res.blob();
+
+    const url =
+      URL.createObjectURL(blob);
+
+    const a =
+      document.createElement("a");
+
+    const name =
+      state.user?.displayName ||
+      "Client";
+
+    a.href = url;
+    a.download =
+      `Barita_Portfolio_Report_${name.replace(/\s+/g, "_")}.pdf`;
+
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+
+    alert(
+      "Failed to generate PDF: " + err.message
+    );
+  }
 }
 
-// ─── BIND EVENTS ──────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-  $('btn-google').addEventListener('click', handleGoogleSignIn);
-  $('btn-email-auth').addEventListener('click', handleEmailAuth);
-  $('btn-forgot').addEventListener('click', async () => {
-    const email = $('input-email').value.trim();
-    if (!email) { setLoginError('Enter your email above first.'); return; }
-    try { await sendPasswordResetEmail(auth, email); alert('Password reset email sent.'); }
-    catch(e) { setLoginError('Could not send reset email: ' + e.message); }
-  });
-  $('btn-toggle-mode').addEventListener('click', toggleRegisterMode);
-  $('btn-close-q').addEventListener('click', closeQuestionnaire);
-  $('q-btn-next').addEventListener('click', advanceQuestion);
-  $('q-btn-back').addEventListener('click', () => { if (state.qPage === 2) { state.qPage = 1; renderQPage(); } });
+function renderProfile(mount) {
+  const answers = state.answers || {};
+  const entries = Object.entries(answers);
 
-  ['input-email','input-password'].forEach(id => {
-    $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleEmailAuth(); });
+  const name =
+    state.user?.displayName ||
+    `${answers.first_name || ""} ${answers.last_name || ""}`.trim() ||
+    "Investor";
+
+  mount.innerHTML = `
+    <section class="panel" style="margin-bottom:22px">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">👤 My Profile</div>
+          <div class="panel-sub">
+            View and edit your saved questionnaire responses
+          </div>
+        </div>
+
+        <button class="btn-action" id="btn-edit-profile">
+          ✏️ Continue / Edit in Chatbot
+        </button>
+      </div>
+
+      <div class="panel-body">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:22px">
+          <div style="width:58px;height:58px;border-radius:50%;background:var(--teal);color:white;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:800">
+            ${esc(name[0] || "I")}
+          </div>
+
+          <div>
+            <div style="font-size:18px;font-weight:800;color:var(--text)">
+              ${esc(name)}
+            </div>
+            <div style="font-size:13px;color:var(--text-muted)">
+              ${esc(state.user?.email || "")}
+            </div>
+          </div>
+        </div>
+
+        ${
+          entries.length
+            ? `
+              <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+                ${entries.map(([key, value]) => `
+                  <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px">
+                    <div style="font-size:11px;font-weight:800;color:var(--text-muted);text-transform:uppercase;margin-bottom:5px">
+                      ${esc(key.replaceAll("_", " "))}
+                    </div>
+                    <div style="font-size:14px;color:var(--text);line-height:1.5">
+                      ${esc(value)}
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+            `
+            : `
+              <div class="empty-state">
+                <div class="empty-icon">🐻</div>
+                <div class="empty-h">No Profile Answers Yet</div>
+                <p class="empty-p">
+                  Start the AI chatbot to build your investor profile.
+                </p>
+              </div>
+            `
+        }
+      </div>
+    </section>
+  `;
+
+  document
+    .getElementById("btn-edit-profile")
+    ?.addEventListener("click", () => {
+      switchView("advisor");
+    });
+}
+
+async function renderReports(mount) {
+
+  mount.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">
+            Your Reports
+          </div>
+          <div class="panel-sub">
+            Download saved portfolio reports
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-body" id="report-list">
+        <p class="empty-p">
+          Loading reports…
+        </p>
+      </div>
+    </section>
+  `;
+
+  const list =
+    $("report-list");
+
+  let reports = [];
+
+  try {
+
+    const q =
+      query(
+        collection(db, "users", state.user.uid, "reports"),
+        orderBy("createdAt", "desc"),
+        limit(10)
+      );
+
+    const snap =
+      await getDocs(q);
+
+    reports =
+      snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+  } catch (err) {
+
+    console.warn(
+      "Report history unavailable:",
+      err.message
+    );
+  }
+
+  if (!reports.length && !state.report) {
+
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📄</div>
+        <div class="empty-h">
+          No Reports Yet
+        </div>
+        <p class="empty-p">
+          Complete the AI chatbot to generate your first portfolio report.
+        </p>
+        <button class="btn-action" onclick="switchView('advisor')">
+          Start AI Chatbot →
+        </button>
+      </div>
+    `;
+
+    return;
+  }
+
+  list.innerHTML = "";
+
+  if (state.report) {
+
+    const item =
+      document.createElement("div");
+
+    item.className = "report-item";
+
+    item.innerHTML = `
+      <div class="report-item-left">
+        <h4>
+          Current Portfolio Report
+        </h4>
+        <p>
+          ${esc(state.report.behavioral_profile || state.report.profile || "Portfolio")} · Current session
+        </p>
+      </div>
+
+      <button class="btn-dl">
+        ⬇ Download PDF
+      </button>
+    `;
+
+    item
+      .querySelector(".btn-dl")
+      .addEventListener(
+        "click",
+        () => downloadPDF("latest")
+      );
+
+    list.appendChild(item);
+  }
+
+  reports.forEach(report => {
+
+    const item =
+      document.createElement("div");
+
+    item.className = "report-item";
+
+    item.innerHTML = `
+      <div class="report-item-left">
+        <h4>
+          Saved Portfolio Report
+        </h4>
+
+        <p>
+          ${esc(report.behavioral_profile || report.profile || "Portfolio")}
+        </p>
+      </div>
+
+      <button class="btn-dl">
+        ⬇ Download PDF
+      </button>
+    `;
+
+    item
+      .querySelector(".btn-dl")
+      .addEventListener(
+        "click",
+        () => downloadPDF(report.id)
+      );
+
+    list.appendChild(item);
+  });
+}
+
+// ─── MINI ALLOCATION ANIMATION ──────────────────────────────────────────────
+function maybeRenderMiniAlloc() {
+
+  document
+    .querySelectorAll(".alloc-bar-inner")
+    .forEach(bar => {
+
+      if (!bar.dataset.pct) return;
+
+      requestAnimationFrame(() => {
+        bar.style.width = bar.dataset.pct + "%";
+      });
+    });
+}
+
+
+
+// ─── LEGACY QUESTIONNAIRE STUBS ─────────────────────────────────────────────
+window.openQuestionnaire = function () {
+  switchView("advisor");
+};
+
+function closeQuestionnaire() {
+  $("modal-questionnaire")?.classList.add("hidden");
+}
+
+// ─── DOM EVENTS ─────────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+
+  document.getElementById("btn-google")
+    ?.addEventListener("click", window.googleLogin);
+
+  document.getElementById("btn-email-auth")
+    ?.addEventListener("click", window.emailAuth);
+
+  document.getElementById("btn-toggle-mode")
+    ?.addEventListener("click", window.toggleRegister);
+
+  document.getElementById("btn-forgot")
+    ?.addEventListener("click", window.resetPassword);
+
+  ["email", "password"].forEach(id => {
+
+    document.getElementById(id)
+      ?.addEventListener("keydown", e => {
+
+        if (e.key === "Enter") {
+          window.emailAuth();
+        }
+      });
   });
 });
 
-// expose globals for inline onclick
-window.switchView      = switchView;
-window.openQuestionnaire = window.openQuestionnaire;
+// ─── EXPOSE GLOBALS ─────────────────────────────────────────────────────────
+window.switchView = switchView;
+window.handleSignOut = window.handleSignOut;
+window.downloadPDF = downloadPDF;

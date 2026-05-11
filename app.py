@@ -1,11 +1,12 @@
 """
 BARITA WEALTH ADVISOR — app.py
-Flask Backend | OpenAI GPT-4o + Gemini Flash fallback
-Correlation-Aware Diversification | Behavioral Risk Adjustment
-Dynamic Weight Allocation | Confidence Score
+Flask Backend | Deterministic Barita Bear Advisor
+Dimension Depths Integration | Correlation-Aware Diversification
+Behavioral Risk Adjustment | MVO + Black-Litterman-style Tilting + HRP
+10,000-path Monte Carlo Goal Validation | Confidence Score | PDF Reporting
 """
 
-import os, io, json, math, time
+import os, io, json, math
 from datetime import datetime
 
 import requests
@@ -20,7 +21,6 @@ except ImportError:
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from openai import OpenAI
 import firebase_admin
 from firebase_admin import credentials, auth as fb_auth, firestore
 from reportlab.lib.pagesizes import A4
@@ -35,8 +35,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-OPENAI_API_KEY           = os.environ.get("OPENAI_API_KEY", "")
-GEMINI_API_KEY           = os.environ.get("GEMINI_API_KEY", "")
 FIREBASE_SERVICE_ACCOUNT = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "")
 DD_API_KEY               = os.environ.get("DIMENSION_DEPTHS_API_KEY", "")
 DD_BASE_URL              = os.environ.get("DIMENSION_DEPTHS_BASE_URL",
@@ -44,53 +42,212 @@ DD_BASE_URL              = os.environ.get("DIMENSION_DEPTHS_BASE_URL",
 
 app = Flask(__name__, static_folder="public", static_url_path="")
 CORS(app, origins=["*"])
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ── FIREBASE ──────────────────────────────────────────────────────────────────
-if FIREBASE_SERVICE_ACCOUNT:
-    cred = credentials.Certificate(json.loads(FIREBASE_SERVICE_ACCOUNT))
-else:
-    cred = credentials.Certificate("serviceAccountKey.json")
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+# Firebase is used for login verification and optional report/session persistence.
+# Firestore failures should NEVER block portfolio generation during demo.
+db = None
+try:
+    if FIREBASE_SERVICE_ACCOUNT:
+        cred = credentials.Certificate(json.loads(FIREBASE_SERVICE_ACCOUNT))
+    else:
+        cred = credentials.Certificate("serviceAccountKey.json")
 
-# ── AI CLIENTS ────────────────────────────────────────────────────────────────
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+    if not firebase_admin._apps:
+        firebase_admin.initialize_app(cred)
 
-# Gemini via OpenAI-compatible endpoint
-gemini_client = OpenAI(
-    api_key=GEMINI_API_KEY,
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-) if GEMINI_API_KEY else None
+    db = firestore.client()
+    print("[Firebase] Admin SDK ready")
+except Exception as e:
+    print(f"[Firebase] Admin init failed/skipped: {e}")
+    db = None
 
-def call_ai(messages, max_tokens=700, system=None):
-    """
-    Call OpenAI GPT-4o. Falls back to Gemini Flash if OpenAI fails or is unavailable.
-    Returns (text, provider_used)
-    """
-    if system:
-        messages = [{"role": "system", "content": system}] + messages
+# ── DETERMINISTIC ADVISORY LAYER ─────────────────────────────────────────────
+# OpenAI/Gemini are intentionally not used in the core demo path because quota
+# failures can make the product appear broken. The system remains an advisor by
+# using dynamic templates driven by the real portfolio/risk engine.
 
-    # Try OpenAI first
-    if openai_client:
-        try:
-            resp = openai_client.chat.completions.create(
-                model="gpt-4o", max_tokens=max_tokens, messages=messages
-            )
-            return resp.choices[0].message.content, "gpt-4o"
-        except Exception as e:
-            print(f"[AI] OpenAI failed: {e} — trying Gemini")
+def fmt_money(value):
+    try:
+        return "${:,.0f}".format(float(value))
+    except Exception:
+        return str(value or "—")
 
-    # Fallback to Gemini
-    if gemini_client:
-        try:
-            resp = gemini_client.chat.completions.create(
-                model="gemini-2.0-flash", max_tokens=max_tokens, messages=messages
-            )
-            return resp.choices[0].message.content, "gemini-2.0-flash"
-        except Exception as e:
-            print(f"[AI] Gemini also failed: {e}")
 
-    return "AI advisor temporarily unavailable. Your portfolio has been generated successfully.", "none"
+def generate_template_advisory_note(answers, report):
+    """Personalised advisory note created from real engine outputs, no API quota needed."""
+    name = (answers.get("first_name") or "friend").strip()
+    profile = report.get("behavioral_profile") or report.get("profile") or "Moderate"
+    raw_profile = report.get("profile") or profile
+    metrics = report.get("metrics", {}) or {}
+    mc = report.get("monte_carlo", {}) or metrics.get("monte_carlo", {}) or {}
+    method = metrics.get("optimization_method") or report.get("optimization_method") or "the selected optimisation method"
+    confidence = report.get("confidence", {}) or {}
+    flags = report.get("behavioral_flags", {}) or {}
+    class_alloc = report.get("class_allocation") or build_class_allocation(report.get("allocations", []))
+
+    class_phrase = ", ".join(f"{x.get('class')} {x.get('pct')}%" for x in class_alloc) or "a diversified mix across asset classes"
+
+    active_flags = [
+        v.get("note", "")
+        for v in flags.values()
+        if isinstance(v, dict) and v.get("detected") and v.get("note")
+    ]
+
+    adjustment_sentence = ""
+    if raw_profile != profile:
+        adjustment_sentence = (
+            f"Your raw score pointed to {raw_profile}, but the behavioural suitability layer adjusted this to {profile} "
+            "so the recommendation better reflects how you may actually react during market stress. "
+        )
+    elif active_flags:
+        adjustment_sentence = "The behavioural layer detected useful signals, so the recommendation includes extra suitability safeguards. "
+
+    mc_sentence = ""
+    if mc:
+        mc_sentence = (
+            f"The Monte Carlo engine tested {mc.get('method_note', str(mc.get('simulations','thousands')) + ' simulations')} and estimated a "
+            f"{mc.get('prob_goal', mc.get('prob_double', '—'))}% probability of reaching the stated goal, "
+            f"with a median outcome near {fmt_money(mc.get('median_final'))}. "
+        )
+
+    return (
+        f"{name}, based on your answers, Barita Bear classified you as a {profile} investor. "
+        f"Your main goal is {answers.get('primary_goal', 'growth and stability')}, with a time horizon of "
+        f"{answers.get('time_horizon', 'not specified')}. {adjustment_sentence}"
+        f"The portfolio was selected using {method}, after comparing risk-adjusted return, volatility, diversification, "
+        f"and goal suitability. The final mix is {class_phrase}, which helps balance your return target with your stated "
+        f"loss tolerance, liquidity needs, currency exposure, and inflation concerns in the Jamaican market. "
+        f"Expected return is {metrics.get('expected_return', '—')}, volatility is {metrics.get('volatility', '—')}, "
+        f"and the Sharpe ratio is {metrics.get('sharpe_ratio', '—')}. {mc_sentence}"
+        f"The confidence score is {confidence.get('score', '—')}/100 ({confidence.get('label', 'profile match')}). "
+        "This is not real financial advice, but for the Barita SOC challenge it shows a data-driven, risk-aware recommendation."
+    )
+def ask_groq(message, answers, report):
+    """Groq-powered advisor response with safe investing-only guardrails."""
+    if not GROQ_API_KEY:
+        return None
+
+    allocations = report.get("allocations", []) or []
+    metrics = report.get("metrics", {}) or {}
+    profile = report.get("behavioral_profile") or report.get("profile") or "Moderate"
+
+    allowed_keywords = [
+        "portfolio", "investment", "invest", "risk", "return", "volatility",
+        "monte carlo", "asset", "allocation", "stocks", "bonds", "equity",
+        "fixed income", "cash", "wealth", "goal", "money", "barita",
+        "sharpe", "rebalance", "inflation", "currency", "jmd", "usd"
+    ]
+
+    msg_l = str(message or "").lower()
+
+    if not any(k in msg_l for k in allowed_keywords):
+        return {
+            "raise_error": True,
+            "reply": "🐻 I’m built to help with investing, portfolios, risk, returns, allocation, and your Barita report. Could you rephrase your question around your investment portfolio?"
+        }
+
+    context = {
+        "profile": profile,
+        "metrics": metrics,
+        "allocations": allocations[:8],
+        "answers": answers,
+        "confidence": report.get("confidence", {}),
+        "monte_carlo": report.get("monte_carlo", {})
+    }
+
+    prompt = f"""
+You are Barita Bear, a warm Jamaican investment advisor chatbot for a student fintech prototype.
+
+Only answer questions about investing, portfolio construction, risk, allocation, Monte Carlo, returns, and the user's report.
+
+If the user asks something outside investing, politely ask them to rephrase around investing.
+
+Use this portfolio context:
+{json.dumps(context, indent=2)}
+
+User question:
+{message}
+
+Answer in a friendly, concise way. Use simple language for beginner investors.
+Do not claim this is real financial advice.
+"""
+
+    try:
+        res = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {GROQ_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": GROQ_MODEL,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful investing assistant. Stay within investing and portfolio advice only."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.4,
+                "max_tokens": 350
+            },
+            timeout=20
+        )
+
+        res.raise_for_status()
+        data = res.json()
+        reply = data["choices"][0]["message"]["content"].strip()
+
+        return {
+            "raise_error": False,
+            "reply": reply
+        }
+
+    except Exception as e:
+        print(f"[Groq] failed: {e}")
+        return None
+
+def generate_chat_reply(message, answers, report):
+    """Deterministic post-portfolio advisor chat for stable demos."""
+    msg = str(message or "").lower()
+    metrics = report.get("metrics", {}) or {}
+    mc = report.get("monte_carlo", {}) or metrics.get("monte_carlo", {}) or {}
+    allocs = report.get("allocations", []) or []
+    profile = report.get("behavioral_profile") or report.get("profile") or "Moderate"
+
+    if "why" in msg or "chosen" in msg or "recommend" in msg or "asset" in msg:
+        top = allocs[:3]
+        top_text = "; ".join(
+            f"{a.get('ticker')} at {a.get('pct')}% because {a.get('rationale','it improves portfolio fit')}"
+            for a in top
+        )
+        return f"I chose this portfolio because it fits your {profile} profile while balancing return, volatility, and diversification. Top drivers: {top_text}."
+
+    if "monte" in msg or "goal" in msg or "probability" in msg or "simulation" in msg:
+        return f"The Monte Carlo validation tested future market scenarios. Your estimated goal probability is {mc.get('prob_goal', mc.get('prob_double','—'))}%, with median final wealth around {fmt_money(mc.get('median_final'))}."
+
+    if "risk" in msg or "volatility" in msg or "loss" in msg:
+        return f"Your portfolio volatility is {metrics.get('volatility','—')}. For a {profile} investor, that shows the expected level of ups and downs while targeting an expected return of {metrics.get('expected_return','—')}."
+
+    if "allocation" in msg or "money" in msg or "where" in msg:
+        rows = ", ".join(f"{a.get('ticker')} {a.get('pct')}%" for a in allocs[:8])
+        return f"Your money is allocated across these main instruments: {rows}. The mix was selected from Dimension Depths assets using expected return, volatility, covariance, and diversification checks."
+
+    if "method" in msg or "optimizer" in msg or "mvo" in msg or "hrp" in msg:
+        candidates = metrics.get("candidate_portfolios", [])
+        cand_text = "; ".join(
+            f"{c.get('method')}: return {c.get('expected_return')}%, vol {c.get('volatility')}%, Sharpe {c.get('sharpe')}"
+            for c in candidates[:4]
+        )
+        return f"The engine compared multiple optimisation methods before selecting the final portfolio. {cand_text}. The selected method was {metrics.get('optimization_method','—')}."
+
+    return generate_template_advisory_note(answers, report)
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 def verify_token(req):
@@ -104,9 +261,12 @@ DD_HEADERS     = {"Authorization": f"Api-Key {DD_API_KEY}"}
 _cached_assets = None
 _cached_corr   = None
 _cached_cov    = None
+_cached_fields = None
 
 def dd_get(endpoint, params=None):
+    """Safe GET wrapper for Dimension Depths endpoints."""
     try:
+        endpoint = endpoint if endpoint.startswith("/") else f"/{endpoint}"
         r = requests.get(f"{DD_BASE_URL}{endpoint}", headers=DD_HEADERS,
                          params=params, timeout=30)
         r.raise_for_status()
@@ -115,16 +275,84 @@ def dd_get(endpoint, params=None):
         print(f"[DD] {endpoint}: {e}")
         return None
 
+def extract_dd_list(payload):
+    """Dimension Depths sometimes returns a list directly and sometimes {data:[...]} or {results:[...]}.
+    This normalises those possible shapes into one Python list."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        rows = payload.get("data") or payload.get("results") or []
+        return rows if isinstance(rows, list) else []
+    return []
+
+def fetch_asset_fields():
+    """Fetch all available asset fields from /api/soc/info/ so the optimiser receives the richest dataset."""
+    global _cached_fields
+    if _cached_fields is not None:
+        return _cached_fields
+
+    info = dd_get("/api/soc/info/")
+    fields = []
+    try:
+        data = info.get("data", info) if isinstance(info, dict) else {}
+        fields = data.get("available_asset_fields", []) or []
+    except Exception as e:
+        print(f"[DD] Could not parse asset fields: {e}")
+
+    # Fallback to the fields this portfolio engine actually uses.
+    if not fields:
+        fields = [
+            "ticker", "name", "super_class", "asset_class", "sub_class", "subclass",
+            "currency", "total_expected_return", "expected_return", "volatility_ann",
+            "volatility", "income_yield_ann", "sharpe_ratio", "semi_deviation_ann",
+            "skewness", "excess_kurtosis"
+        ]
+
+    _cached_fields = ",".join(fields)
+    print(f"[DD] Using {len(fields)} asset fields")
+    return _cached_fields
+
 def fetch_all_assets():
+    """Fetch the complete SOC asset universe with pagination.
+    This is stronger than a single /assets call because the API may return only the first page by default."""
     global _cached_assets
-    if _cached_assets is not None: return _cached_assets
-    data = dd_get("/api/soc/assets/")
-    if not data: return []
-    if isinstance(data, list): _cached_assets = data
-    elif isinstance(data, dict):
-        _cached_assets = data.get("data") or data.get("results") or []
-    else: _cached_assets = []
-    print(f"[DD] Fetched {len(_cached_assets)} assets")
+    if _cached_assets is not None:
+        return _cached_assets
+
+    if not DD_API_KEY:
+        print("[DD] Missing API key — using fallback portfolio")
+        _cached_assets = []
+        return _cached_assets
+
+    all_assets = []
+    limit = 100
+    offset = 0
+    fields = fetch_asset_fields()
+
+    while True:
+        params = {"limit": limit, "offset": offset}
+        if fields:
+            params["fields"] = fields
+
+        payload = dd_get("/api/soc/assets/", params=params)
+        rows = extract_dd_list(payload)
+        if not rows:
+            break
+
+        all_assets.extend(rows)
+
+        meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
+        returned = meta.get("returned_count", len(rows))
+        total = meta.get("total_count") or meta.get("count")
+
+        # Stop if this was the last page. Supports both returned_count and total_count formats.
+        if returned < limit or (total is not None and len(all_assets) >= int(total)):
+            break
+
+        offset += limit
+
+    _cached_assets = all_assets
+    print(f"[DD] Fetched {len(_cached_assets)} assets across paginated SOC universe")
     return _cached_assets
 
 def fetch_covariance():
@@ -165,7 +393,23 @@ def score_answers(answers):
     s += {"No - keep it fixed":0,"Yes - small changes":1,"Yes - moderate changes":2,"Yes - fully active":3
           }.get(answers.get("market_adjustment",""), 1)
 
-    pct = s / 30.0
+    # Added scoring variables from the design document.
+    horizon_years = parse_years(answers.get("time_horizon", ""))
+    if horizon_years >= 10: s += 3
+    elif horizon_years >= 5: s += 2
+    elif horizon_years >= 2: s += 1
+    else: s += 0
+
+    try:
+        rc = float(str(answers.get("risk_comfort", "5")).strip())
+    except Exception:
+        rc = 5
+    if rc >= 8: s += 2
+    elif rc >= 5: s += 1
+    else: s += 0
+
+    max_score = 35.0
+    pct = s / max_score
     if pct < 0.35:   profile, label = "Conservative", "Beginner Investor"
     elif pct < 0.65: profile, label = "Moderate",     "Intermediate Investor"
     else:            profile, label = "Aggressive",   "Experienced Investor"
@@ -181,9 +425,59 @@ CLASS_COLORS = {
     "Real Estate": "#FB923C", "Alternatives": "#8B5CF6", "Commodities": "#F59E0B",
 }
 
+
+def parse_years(value):
+    """Extract an approximate investment horizon in years from text."""
+    if value is None: return 0.0
+    txt = str(value).lower().replace("+", "")
+    nums = []
+    import re
+    for n in re.findall(r"\d+(?:\.\d+)?", txt):
+        try: nums.append(float(n))
+        except: pass
+    if not nums: return 0.0
+    years = max(nums)
+    if "month" in txt: years = years / 12.0
+    return years
+
+
+def asset_rationale(asset, profile, ctx):
+    """Plain-English reason an asset/class fits the user's answers."""
+    ac = classify_asset(asset)
+    bits = []
+    if ac in ("Cash", "Fixed Income") and profile == "Conservative":
+        bits.append("supports capital protection and smoother returns")
+    if ac == "Equity" and profile == "Aggressive":
+        bits.append("adds higher long-term growth potential")
+    if ac == "Equity" and profile == "Moderate":
+        bits.append("adds measured growth while keeping balance")
+    if ac == "Cash" and ctx.get("horizon_liquidity_need", 0) >= 0.5:
+        bits.append("keeps liquidity available for possible withdrawals")
+    if ac in ("Real Estate", "Commodities", "Equity") and ctx.get("inflation_hedge_need", 0) >= 1:
+        bits.append("helps hedge inflation pressure")
+    if "USD" in (asset.get("ticker", "") or "").upper() and ctx.get("usd_bias", 0) > 0.5:
+        bits.append("matches your USD exposure")
+    if not bits:
+        bits.append("improves diversification within your risk profile")
+    return "; ".join(bits).capitalize() + "."
+
+
+def build_explainability_summary(answers, profile, behavioral_profile, flags, metrics):
+    adjusted = profile != behavioral_profile
+    flag_names = [k.replace("_", " ") for k, v in flags.items() if isinstance(v, dict) and v.get("detected")]
+    parts = [
+        f"Raw questionnaire scoring mapped the client to {profile}.",
+        f"The behavioural layer {'adjusted this to ' + behavioral_profile if adjusted else 'confirmed the same profile'}.",
+        f"Detected behavioural signals: {', '.join(flag_names) if flag_names else 'none'}.",
+        f"The optimiser selected assets using expected return, volatility, Sharpe ratio, liquidity need, currency exposure, inflation preference, and diversification/correlation penalties.",
+        f"Portfolio metrics: expected return {metrics.get('expected_return','—')}, volatility {metrics.get('volatility','—')}, Sharpe {metrics.get('sharpe_ratio','—')}.",
+    ]
+    return " ".join(parts)
+
 # ── CLIENT CONTEXT ────────────────────────────────────────────────────────────
 def derive_client_context(answers):
     ctx = {}
+    ctx["primary_goal"] = answers.get("primary_goal", "")
     ctx["goal_equity_bias"] = {
         "Wealth accumulation / growth": 1.0, "Retirement planning": 0.4,
         "Education funding": 0.3, "Property purchase": 0.0,
@@ -225,6 +519,16 @@ def derive_client_context(answers):
     ip = {"Not sure":0.0,"Not necessary":0.0,"Somewhat":0.5,"Yes - strong focus":1.5
           }.get(answers.get("inflation_protection","Somewhat"), 0.5)
     ctx["inflation_hedge_need"] = ic + ip
+
+    # New design-document fields
+    ctx["time_horizon"] = answers.get("time_horizon", "")
+    ctx["time_horizon_years"] = parse_years(answers.get("time_horizon", ""))
+    try:
+        ctx["risk_comfort_score"] = float(str(answers.get("risk_comfort", "5")).strip())
+    except Exception:
+        ctx["risk_comfort_score"] = 5.0
+    ctx["sector_view"] = answers.get("sector_view", "")
+    ctx["target_amount"] = answers.get("target_amount", "")
 
     return ctx
 
@@ -312,14 +616,41 @@ def behavioral_risk_adjustment(answers, raw_profile):
 #  Uses the actual DD correlation matrix to penalise highly correlated pairs
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def normalise_matrix_payload(payload):
+    """Normalise DD matrix payloads into {row_ticker: {col_ticker: value}}."""
+    if not payload or not isinstance(payload, dict):
+        return {}
+    data = payload.get("data", payload)
+    if isinstance(data, dict):
+        if isinstance(data.get("values"), list):
+            rows = data.get("index") or data.get("rows") or data.get("left") or []
+            cols = data.get("columns") or data.get("cols") or data.get("right") or rows
+            values = data.get("values") or []
+            if rows and cols:
+                out = {}
+                for i, r in enumerate(rows):
+                    out[str(r)] = {}
+                    for j, c in enumerate(cols):
+                        try:
+                            out[str(r)][str(c)] = float(values[i][j])
+                        except Exception:
+                            out[str(r)][str(c)] = 0.0
+                return out
+        matrix = data.get("matrix") or data
+        if isinstance(matrix, dict):
+            return matrix
+    return {}
+
+
 def get_correlation(corr_data, ticker_a, ticker_b):
     """Extract correlation between two assets from DD correlation matrix."""
-    if not corr_data or not isinstance(corr_data, dict):
-        return 0.0
-    matrix = corr_data.get("matrix") or corr_data.get("data") or corr_data
-    if not isinstance(matrix, dict): return 0.0
+    matrix = normalise_matrix_payload(corr_data)
     row = matrix.get(ticker_a, {})
-    if isinstance(row, dict): return float(row.get(ticker_b, 0.0))
+    if isinstance(row, dict):
+        try:
+            return float(row.get(ticker_b, 0.0))
+        except Exception:
+            return 0.0
     return 0.0
 
 def diversification_penalty(asset, selected_so_far, corr_data):
@@ -445,6 +776,24 @@ def score_asset(asset, profile, ctx):
     if ih >= 1.0 and ac in ("Real Estate","Commodities","Equity"): sc += min(ih * 0.35, 1.0)
     elif ac == "Cash" and ih >= 1.5: sc -= 0.5
 
+    # Explicit sector/client views add a small Black-Litterman-style tilt without overpowering risk controls.
+    sv = str(ctx.get("sector_view", "")).lower()
+    nm = (asset.get("name") or "").lower()
+    if sv:
+        if any(word in sv for word in ["tech", "technology", "global"]) and ("tech" in nm or "global" in nm or "usd" in ticker):
+            sc += 0.4
+        if any(word in sv for word in ["local", "jamaica", "jmd"]) and "USD" not in ticker:
+            sc += 0.3
+        if any(word in sv for word in ["property", "real estate", "reit"]) and ac == "Real Estate":
+            sc += 0.5
+
+    horizon = ctx.get("time_horizon_years", 0)
+    comfort = ctx.get("risk_comfort_score", 5)
+    if horizon >= 7 and comfort >= 6 and ac == "Equity":
+        sc += 0.4
+    elif horizon and horizon < 2 and ac in ("Cash", "Fixed Income"):
+        sc += 0.5
+
     return sc
 
 def apply_exclusions(assets, answers):
@@ -531,6 +880,7 @@ def assign_weights(assets, profile, ctx):
             "volatility":      a.get("volatility_ann") or a.get("volatility"),
             "sharpe_ratio":    a.get("sharpe_ratio"),
             "corr_penalty":    round(a.get("_corr_penalty",0), 3),
+            "rationale":       asset_rationale(a, profile, ctx),
         })
     out.sort(key=lambda x: -x["pct"])
     return out
@@ -553,9 +903,12 @@ def compute_confidence_score(allocations, answers, profile, behavioral_flags, co
     breakdown = {}
 
     # ── Completeness (20pts) ─────────────────────────────────────────────────
-    key_fields = ["primary_goal","withdrawal_time","max_loss","income_loss_runway",
-                  "debt_situation","earn_currency","spend_currency","invest_style",
-                  "knowledge_level","inflation_impact"]
+    key_fields = ["first_name","last_name","age","knowledge_level","primary_goal","time_horizon",
+                  "target_amount","withdrawal_time","drop_reaction","risk_comfort","max_loss",
+                  "sector_view","income_loss_runway","debt_situation","earn_currency",
+                  "spend_currency","usd_liabilities","inflation_impact","inflation_protection",
+                  "invest_style","market_adjustment","risk_relationship","loss_vs_gain",
+                  "performance_benchmark"]
     filled = sum(1 for f in key_fields if answers.get(f))
     completeness = round(filled / len(key_fields) * 20)
     score += completeness
@@ -632,7 +985,7 @@ def compute_portfolio_metrics(allocs, cov):
     if cov and isinstance(cov, dict):
         try:
             tks = [a["ticker"] for a in allocs]
-            cm  = cov.get("matrix") or cov.get("data") or cov
+            cm  = normalise_matrix_payload(cov)
             var = 0.0
             for i,ti in enumerate(tks):
                 for j,tj in enumerate(tks):
@@ -652,11 +1005,60 @@ def build_risk_breakdown(allocs):
     return {ac:{"pct":round(p),"color":CLASS_COLORS.get(ac,"#6B7280")}
             for ac,p in sorted(t.items(),key=lambda x:-x[1])}
 
-# ── FULL DD PIPELINE ──────────────────────────────────────────────────────────
+def pretty_asset_name(asset, idx=0):
+
+    cls = classify_asset(asset)
+
+    names = {
+        "Equity": [
+            "Caribbean Growth Equity Fund",
+            "Regional Blue Chip Equity Fund",
+            "Global Expansion Equity Fund",
+            "Dividend Growth Equity Fund"
+        ],
+
+        "Fixed Income": [
+            "Income Stability Bond Fund",
+            "Government Income Fund",
+            "Capital Preservation Bond Fund"
+        ],
+
+        "Cash": [
+            "High Liquidity Money Market Fund"
+        ],
+
+        "Real Estate": [
+            "Real Estate Income Trust"
+        ]
+    }
+
+    options = names.get(
+        cls,
+        ["Diversified Investment Fund"]
+    )
+
+    return options[idx % len(options)]
+
+    
+# ── FULL DIMENSIONS DEPTH PIPELINE ──────────────────────────────────────────────────────────
 def build_portfolio_from_dd(profile, answers, behavioral_profile=None):
     effective_profile = behavioral_profile or profile
 
     all_assets = fetch_all_assets()
+
+    REAL_TICKERS = {
+    "NCBFG","JMMBGL","VMIL","GK","WISYNCO","CAR",
+    "QQQ","XLK","VGT","EEM","IEMG","VWO",
+    "TBILLUSD","TBILL-JMD","GOJ2037","GOJ2029",
+    "PROVEN","SPY"
+}
+
+    all_assets = [
+        a for a in all_assets
+        if (a.get("ticker") or "").replace(" ", "").replace("-", "").upper()
+        in {t.replace(" ", "").replace("-", "").upper() for t in REAL_TICKERS}
+    ]
+
     if not all_assets: return None,None,None,None
 
     filtered = [a for a in all_assets
@@ -689,13 +1091,18 @@ def build_portfolio_from_dd(profile, answers, behavioral_profile=None):
 
     print(f"[DD] Selected {len(selected)} assets, {len({a['_class'] for a in selected})} classes")
 
-    cov     = fetch_covariance()
+    print("[DD] Fetching covariance...")
+    cov = fetch_covariance()
+    print("[DD] Covariance fetched:", type(cov))
 
     # Try MVO first (score-based selection already done)
     primary_goal = answers.get("primary_goal", "Wealth accumulation / growth")
+
+    print("[DD] Starting MVO...")
     mvo_allocs, mvo_rb, mvo_metrics, mvo_w = build_portfolio_with_mvo(
-        selected, effective_profile, primary_goal, corr_data, ctx
+        selected, effective_profile, primary_goal, cov, ctx, answers
     )
+    print("[DD] MVO done", flush=True)    
 
     if mvo_allocs:
         print(f"[MVO] Success — strategy: {mvo_metrics.get('mvo_strategy','?')}")
@@ -713,32 +1120,32 @@ def build_fallback_portfolio(profile, answers, behavioral_profile=None):
     effective_profile = behavioral_profile or profile
     ctx  = derive_client_context(answers)
     if effective_profile=="Conservative":
-        raw=[{"label":"JMD T-Bills","ticker":"TBILLJMD","pct":25,"color":"#10B981","class":"Cash"},
-             {"label":"USD T-Bills","ticker":"TBILLUSD","pct":15,"color":"#6EE7B7","class":"Cash"},
-             {"label":"Short Gov Bonds","ticker":"PVAU / CWPU","pct":25,"color":"#0BB8A9","class":"Fixed Income"},
-             {"label":"Long Gov Bonds","ticker":"JFG / QPESE","pct":20,"color":"#38BDF8","class":"Fixed Income"},
-             {"label":"Real Estate Fund","ticker":"XEAK","pct":10,"color":"#FB923C","class":"Real Estate"},
-             {"label":"Domestic Defensives","ticker":"PDTOU / XPMCJ","pct":5,"color":"#A78BFA","class":"Equity"}]
+        raw=[{"label":"JMD T-Bills","ticker":"TBILL-JMD","pct":25,"color":"#10B981","class":"Cash"},
+              {"label":"USD T-Bills","ticker":"TBILL-USD","pct":15,"color":"#2563EB","class":"Cash"},
+              {"label":"Short Gov Bonds","ticker":"GOJ 2029","pct":25,"color":"#B80B0B","class":"Fixed Income"},
+              {"label":"Long Gov Bonds","ticker":"GOJ 2037","pct":20,"color":"#B713AC","class":"Fixed Income"},
+              {"label":"Real Estate Fund","ticker":"PROVEN REIT","pct":10,"color":"#FB923C","class":"Real Estate"},
+              {"label":"Domestic Defensives","ticker":"GK / WISYNCO","pct":5,"color":"#A78BFA","class":"Equity"}]
         metrics={"expected_return":"7.4%","volatility":"4.2%","sharpe_ratio":"1.41"}
     elif effective_profile=="Moderate":
-        raw=[{"label":"Short Gov Bonds","ticker":"PVAU / CWPU","pct":18,"color":"#0BB8A9","class":"Fixed Income"},
-             {"label":"Long Gov Bonds","ticker":"JFG / QPESE","pct":12,"color":"#38BDF8","class":"Fixed Income"},
-             {"label":"Corporate Bonds","ticker":"IRKXL / DTOT","pct":10,"color":"#FBBF24","class":"Fixed Income"},
-             {"label":"Domestic Financials","ticker":"XKFZ / KBJZN","pct":15,"color":"#3B82F6","class":"Equity"},
-             {"label":"Domestic Defensives","ticker":"PDTOU / XPMCJ","pct":15,"color":"#8B5CF6","class":"Equity"},
-             {"label":"Global Tech Equity","ticker":"WBG / MOSWO","pct":15,"color":"#EC4899","class":"Equity"},
-             {"label":"Real Estate Fund","ticker":"XEAK","pct":10,"color":"#FB923C","class":"Real Estate"},
-             {"label":"Alt Investments","ticker":"IGRIG","pct":5,"color":"#6B7280","class":"Alternatives"}]
+        raw=[{"label":"Short Gov Bonds","ticker":"GOJ 2029","pct":18,"color":"#0BB8A9","class":"Fixed Income"},
+             {"label":"Long Gov Bonds","ticker":"GOJ 2037","pct":12,"color":"#38BDF8","class":"Fixed Income"},
+             {"label":"Corporate Bonds","ticker":"Barita Bond Fund","pct":10,"color":"#FBBF24","class":"Fixed Income"},
+             {"label":"Domestic Financials","ticker":"NCBFG / JMMBGL / VMIL","pct":15,"color":"#3B82F6","class":"Equity"},
+             {"label":"Domestic Defensives","ticker":"GK / WISYNCO / CAR","pct":15,"color":"#8B5CF6","class":"Equity"},
+             {"label":"Global Tech Equity","ticker":"QQQ / XLK / VGT","pct":15,"color":"#EC4899","class":"Equity"},
+             {"label":"Real Estate Fund","ticker":"PROVEN REIT","pct":10,"color":"#FB923C","class":"Real Estate"},
+             {"label":"Alt Investments","ticker":"Infrastructure / Gold ETF","pct":5,"color":"#6B7280","class":"Alternatives"}]
         metrics={"expected_return":"11.8%","volatility":"9.6%","sharpe_ratio":"0.97"}
     else:
-        raw=[{"label":"Domestic Financials","ticker":"XKFZ / KBJZN / TIHE","pct":18,"color":"#3B82F6","class":"Equity"},
-             {"label":"Domestic Cyclicals","ticker":"MBTTD / YTR / IZQLN","pct":14,"color":"#EF4444","class":"Equity"},
-             {"label":"Global Tech Equity","ticker":"WBG / MOSWO / RJK","pct":20,"color":"#8B5CF6","class":"Equity"},
-             {"label":"Emerging Markets","ticker":"BQB / EMWB / CQOAC","pct":15,"color":"#06B6D4","class":"Equity"},
-             {"label":"Corporate Bonds","ticker":"IRKXL / DTOT","pct":12,"color":"#FBBF24","class":"Fixed Income"},
-             {"label":"Real Estate Fund","ticker":"XEAK","pct":10,"color":"#FB923C","class":"Real Estate"},
-             {"label":"Alt Investments","ticker":"IGRIG","pct":8,"color":"#6B7280","class":"Alternatives"},
-             {"label":"JMD T-Bills","ticker":"TBILLJMD","pct":3,"color":"#10B981","class":"Cash"}]
+        raw=[{"label":"Domestic Financials","ticker":"NCBFG / JMMBGL / VMIL","pct":18,"color":"#3B82F6","class":"Equity"},
+             {"label":"Domestic Cyclicals","ticker":"GK / LASM / WISYNCO","pct":14,"color":"#EF4444","class":"Equity"},
+             {"label":"Global Tech Equity","ticker":"QQQ / XLK / VGT","pct":20,"color":"#8B5CF6","class":"Equity"},
+             {"label":"Emerging Markets","ticker":"EEM / IEMG / VWO","pct":15,"color":"#06B6D4","class":"Equity"},
+             {"label":"Corporate Bonds","ticker":"Barita Bond Fund","pct":12,"color":"#FBBF24","class":"Fixed Income"},
+             {"label":"Real Estate Fund","ticker":"PROVEN REIT","pct":10,"color":"#FB923C","class":"Real Estate"},
+             {"label":"Alt Investments","ticker":"Gold / Infrastructure","pct":8,"color":"#6B7280","class":"Alternatives"},
+             {"label":"JMD T-Bills","ticker":"GOJ T-Bills","pct":3,"color":"#10B981","class":"Cash"},]
         metrics={"expected_return":"17.3%","volatility":"16.8%","sharpe_ratio":"0.88"}
 
     raw   = apply_exclusions(raw, answers)
@@ -774,9 +1181,7 @@ def build_return_covariance_from_dd(assets_list, cov_data):
 
     # Covariance matrix — try DD first
     sigma = np.zeros((n, n))
-    cov_matrix = None
-    if cov_data and isinstance(cov_data, dict):
-        cov_matrix = cov_data.get("matrix") or cov_data.get("data") or cov_data
+    cov_matrix = normalise_matrix_payload(cov_data)
 
     if cov_matrix and isinstance(cov_matrix, dict):
         for i, ti in enumerate(tickers):
@@ -928,13 +1333,14 @@ def choose_mvo_strategy(profile, primary_goal):
     return "max_sharpe"  # Moderate + Aggressive
 
 
-def apply_mvo_weights(assets_list, weights_arr, cov_data):
+def apply_mvo_weights(assets_list, weights_arr, cov_data, profile="Moderate", ctx=None):
     """Convert MVO weight array back to allocation dicts."""
+    ctx = ctx or {}
     out = []
     for i, a in enumerate(assets_list):
         ac = classify_asset(a)
         out.append({
-            "label":           a.get("name") or a.get("ticker", f"Asset {i+1}"),
+            "label":           a.get("ticker") or a.get("name", f"Asset {i+1}"),
             "ticker":          a.get("ticker", "—"),
             "pct":             round(float(weights_arr[i]) * 100, 1),
             "color":           CLASS_COLORS.get(ac, "#6B7280"),
@@ -943,6 +1349,7 @@ def apply_mvo_weights(assets_list, weights_arr, cov_data):
             "volatility":      a.get("volatility_ann") or a.get("volatility"),
             "sharpe_ratio":    a.get("sharpe_ratio"),
             "corr_penalty":    round(a.get("_corr_penalty", 0), 3),
+            "rationale":       asset_rationale(a, profile, ctx),
         })
     # Fix rounding
     total = sum(x["pct"] for x in out)
@@ -952,55 +1359,329 @@ def apply_mvo_weights(assets_list, weights_arr, cov_data):
     return out
 
 
-def build_portfolio_with_mvo(assets_list, profile, primary_goal, cov_data, ctx):
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ADVANCED OPTIMISATION LAYER: BLACK-LITTERMAN TILT + HRP + METHOD SELECTION
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def regularize_covariance(sigma):
+    """Make covariance matrix symmetric and numerically stable."""
+    sigma = np.asarray(sigma, dtype=float)
+    sigma = np.nan_to_num(sigma, nan=0.0, posinf=0.0, neginf=0.0)
+    sigma = (sigma + sigma.T) / 2.0
+    try:
+        min_eig = np.linalg.eigvalsh(sigma).min()
+        if min_eig < 1e-8:
+            sigma += (abs(min_eig) + 1e-6) * np.eye(sigma.shape[0])
+    except Exception:
+        sigma += 1e-6 * np.eye(sigma.shape[0])
+    return sigma
+
+
+def apply_black_litterman_tilt(mu, assets_list, answers, ctx):
     """
-    Full MVO pipeline:
-    1. Build mu + Sigma from DD data
-    2. Select strategy (Max Sharpe / Min Vol / Income)
-    3. Run MVO optimisation
-    4. Run Monte Carlo validation
-    5. Return allocations + extended metrics
+    Lightweight Black-Litterman-style view blending.
+    We do not assume market caps are available in Dimension Depths, so we use the
+    DD expected return vector as the prior and blend in soft client views from the
+    questionnaire. This stabilises personalisation without letting subjective views
+    dominate the optimiser.
+    """
+    mu = np.asarray(mu, dtype=float).copy()
+    prior = mu.copy()
+    view = np.zeros_like(mu)
+
+    sector_view = str(answers.get("sector_view") or ctx.get("sector_view") or "").lower()
+    goal = answers.get("primary_goal", "") or ctx.get("primary_goal", "")
+    inflation_need = ctx.get("inflation_hedge_need", 0)
+    usd_bias = ctx.get("usd_bias", 0)
+
+    for i, a in enumerate(assets_list):
+        ac = classify_asset(a)
+        name = (a.get("name") or "").lower()
+        ticker = (a.get("ticker") or "").upper()
+
+        # User views: small active tilts only.
+        if sector_view and sector_view not in ("not sure", "none", "no"):
+            if any(w in sector_view for w in ["tech", "technology", "global"]):
+                if "tech" in name or "global" in name or "USD" in ticker:
+                    view[i] += 0.015
+            if any(w in sector_view for w in ["local", "jamaica", "jmd"]):
+                if "USD" not in ticker:
+                    view[i] += 0.010
+            if any(w in sector_view for w in ["property", "real estate", "reit"]):
+                if ac == "Real Estate":
+                    view[i] += 0.012
+
+        # Goal-based views: growth likes equity, income likes yield assets.
+        if goal == "Wealth accumulation / growth" and ac == "Equity":
+            view[i] += 0.006
+        if goal in ("Income generation", "Capital preservation", "Emergency fund building") and ac in ("Cash", "Fixed Income"):
+            view[i] += 0.006
+
+        # Macro/currency preferences.
+        if inflation_need >= 1.0 and ac in ("Real Estate", "Commodities", "Equity"):
+            view[i] += 0.006
+        if usd_bias > 0.5 and "USD" in ticker:
+            view[i] += 0.006
+
+    # Confidence: strong enough to personalise, weak enough to avoid overfitting.
+    confidence = 0.35
+    blended = (1 - confidence) * prior + confidence * (prior + view)
+    return np.clip(blended, -0.50, 0.80)
+
+
+def covariance_to_correlation(sigma):
+    sigma = regularize_covariance(sigma)
+    diag = np.sqrt(np.maximum(np.diag(sigma), 1e-12))
+    corr = sigma / np.outer(diag, diag)
+    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+    np.fill_diagonal(corr, 1.0)
+    return np.clip(corr, -1.0, 1.0)
+
+
+def get_quasi_diag(link):
+    """Sort clustered items by hierarchical tree order."""
+    link = link.astype(int)
+    sort_ix = [link[-1, 0], link[-1, 1]]
+    num_items = link[-1, 3]
+    while any(i >= num_items for i in sort_ix):
+        new_sort_ix = []
+        for i in sort_ix:
+            if i < num_items:
+                new_sort_ix.append(i)
+            else:
+                new_sort_ix.extend([link[i - int(num_items), 0], link[i - int(num_items), 1]])
+        sort_ix = new_sort_ix
+    return list(map(int, sort_ix))
+
+
+def cluster_variance(cov, cluster_items):
+    sub_cov = cov[np.ix_(cluster_items, cluster_items)]
+    inv_diag = 1.0 / np.maximum(np.diag(sub_cov), 1e-12)
+    weights = inv_diag / inv_diag.sum()
+    return float(np.dot(weights, np.dot(sub_cov, weights)))
+
+
+def hrp_weights_from_covariance(sigma):
+    """
+    Hierarchical Risk Parity: clusters correlated assets and allocates by risk.
+    Used as a robust diversification benchmark/complement to MVO.
+    """
+    try:
+        from scipy.cluster.hierarchy import linkage
+        from scipy.spatial.distance import squareform
+    except Exception as e:
+        print(f"[HRP] scipy clustering unavailable: {e}")
+        return None
+
+    cov = regularize_covariance(sigma)
+    n = cov.shape[0]
+    if n < 2:
+        return np.ones(n) / n
+
+    corr = covariance_to_correlation(cov)
+    dist = np.sqrt(np.maximum((1 - corr) / 2, 0))
+    condensed = squareform(dist, checks=False)
+    link = linkage(condensed, method="single")
+    sort_ix = get_quasi_diag(link)
+
+    weights = np.ones(n)
+    clusters = [sort_ix]
+    while clusters:
+        cluster = clusters.pop(0)
+        if len(cluster) <= 1:
+            continue
+        split = len(cluster) // 2
+        left, right = cluster[:split], cluster[split:]
+        var_left = cluster_variance(cov, left)
+        var_right = cluster_variance(cov, right)
+        alpha = 1 - var_left / (var_left + var_right) if (var_left + var_right) > 0 else 0.5
+        weights[left] *= alpha
+        weights[right] *= (1 - alpha)
+        clusters += [left, right]
+
+    weights = np.maximum(weights, 0)
+    return weights / weights.sum() if weights.sum() > 0 else np.ones(n) / n
+
+
+def portfolio_stats(weights, mu, sigma, risk_free=0.04):
+    w = np.asarray(weights, dtype=float)
+    ret = float(np.dot(w, mu))
+    vol = float(np.sqrt(max(np.dot(w, np.dot(sigma, w)), 0)))
+    sharpe = (ret - risk_free) / vol if vol > 1e-8 else 0.0
+    return ret, vol, sharpe
+
+
+def diversification_score(weights, sigma):
+    """Higher is better: rewards lower concentration and lower correlation."""
+    w = np.asarray(weights, dtype=float)
+    hhi = float(np.sum(w ** 2))
+    corr = covariance_to_correlation(sigma)
+    avg_corr = 0.0
+    pairs = 0
+    for i in range(len(w)):
+        for j in range(i + 1, len(w)):
+            avg_corr += abs(corr[i, j])
+            pairs += 1
+    avg_corr = avg_corr / pairs if pairs else 0.5
+    return max(0.0, (1 - hhi) * 50 + (1 - avg_corr) * 50)
+
+
+def goal_amount_from_answers(answers, initial=100_000):
+    txt = str(answers.get("target_amount", "") or "").lower().replace(",", "")
+    if "double" in txt:
+        return initial * 2
+    import re
+    nums = re.findall(r"\d+(?:\.\d+)?", txt)
+    if not nums:
+        return initial * 1.5
+    val = float(nums[0])
+    if "million" in txt or "m" in txt:
+        val *= 1_000_000
+    return max(val, initial * 0.75)
+
+
+def run_monte_carlo_goal(weights, mu, sigma, answers, initial=100_000, sims=10000):
+    years = max(1, min(40, int(parse_years(answers.get("time_horizon", "10")) or 10)))
+    goal = goal_amount_from_answers(answers, initial)
+    mc = run_monte_carlo(weights, mu, sigma, initial=initial, years=years, sims=sims)
+    # Recompute with same distribution to estimate goal probability explicitly.
+    np.random.seed(42)
+    ret, vol, _ = portfolio_stats(weights, mu, sigma)
+    paths = np.random.normal(ret, vol, (sims, years))
+    wealth = initial * np.cumprod(1 + paths, axis=1)
+    final = wealth[:, -1]
+    mc.update({
+        "goal_amount": round(float(goal), 0),
+        "prob_goal": round(float((final >= goal).mean() * 100), 1),
+        "prob_loss": round(float((final < initial).mean() * 100), 1),
+        "expected_shortfall_10pct": round(float(np.percentile(final, 10)), 0),
+        "method_note": f"{sims:,} simulations over {years} year(s)",
+    })
+    return mc
+
+
+def choose_best_candidate(candidates, profile):
+    """Rank candidate portfolios using objective function aligned to investor profile."""
+    if not candidates:
+        return None
+    for c in candidates:
+        ret, vol, sharpe = c["return"], c["vol"], c["sharpe"]
+        div = c["diversification"]
+        if profile == "Conservative":
+            c["selection_score"] = (div * 0.35) + (sharpe * 20) - (vol * 120)
+        elif profile == "Aggressive":
+            c["selection_score"] = (sharpe * 35) + (ret * 90) + (div * 0.15)
+        else:
+            c["selection_score"] = (sharpe * 30) + (div * 0.25) - (vol * 40)
+    return max(candidates, key=lambda x: x["selection_score"])
+
+
+def build_portfolio_with_mvo(assets_list, profile, primary_goal, cov_data, ctx, answers=None):
+    """
+    Advanced optimisation pipeline:
+    1. Build expected returns and covariance from Dimension Depths
+    2. Apply Black-Litterman-style client view tilts to expected returns
+    3. Generate candidate portfolios: MVO, BL-MVO, HRP, and income/min-vol variants
+    4. Compare candidates by profile-aligned objective score
+    5. Validate selected portfolio with 10,000-path Monte Carlo goal simulation
     """
     if not HAS_SCIPY or not assets_list:
         return None, None, None, None
 
-    mu, sigma, tickers = build_return_covariance_from_dd(assets_list, cov_data)
+    mu_raw, sigma, tickers = build_return_covariance_from_dd(assets_list, cov_data)
+    sigma = regularize_covariance(sigma)
+    answers = answers or {}
+    mu_bl = apply_black_litterman_tilt(mu_raw, assets_list, answers, ctx)
     strategy = choose_mvo_strategy(profile, primary_goal)
-    print(f"[MVO] Strategy: {strategy} | Assets: {len(assets_list)}")
+    print(f"[OPT] Strategy: {strategy} | Assets: {len(assets_list)} | Methods: MVO + BL + HRP + Monte Carlo")
 
-    weights = None
+    candidates = []
+
+    def add_candidate(name, weights, mu_used, description):
+        if weights is None:
+            return
+        weights = np.asarray(weights, dtype=float)
+        weights = np.maximum(weights, 0)
+        if weights.sum() <= 0:
+            return
+        weights = weights / weights.sum()
+        ret, vol, sharpe = portfolio_stats(weights, mu_used, sigma)
+        candidates.append({
+            "name": name,
+            "weights": weights,
+            "mu": mu_used,
+            "return": ret,
+            "vol": vol,
+            "sharpe": sharpe,
+            "diversification": diversification_score(weights, sigma),
+            "description": description,
+        })
+
+    # 1) Traditional MVO baseline.
     if strategy == "income":
-        yields = [float(a.get("income_yield_ann") or a.get("total_expected_return") or 0.04)
-                  for a in assets_list]
-        weights = mvo_income_constrained(mu, sigma, yields, min_yield=0.035)
-        if weights is None:  # fallback if income constraint infeasible
-            weights = mvo_min_volatility(mu, sigma)
+        yields = [float(a.get("income_yield_ann") or a.get("total_expected_return") or 0.04) for a in assets_list]
+        add_candidate("Income-Constrained MVO", mvo_income_constrained(mu_raw, sigma, yields, min_yield=0.035), mu_raw,
+                      "Minimises volatility while meeting a minimum income-yield constraint.")
     elif strategy == "min_vol":
-        weights = mvo_min_volatility(mu, sigma)
+        add_candidate("Minimum Volatility MVO", mvo_min_volatility(mu_raw, sigma), mu_raw,
+                      "Finds the lowest-risk portfolio available from the selected assets.")
     else:
-        weights = mvo_max_sharpe(mu, sigma)
+        add_candidate("Maximum Sharpe MVO", mvo_max_sharpe(mu_raw, sigma), mu_raw,
+                      "Finds the highest expected return per unit of risk.")
 
-    if weights is None:
-        print("[MVO] Optimisation failed — falling back to score weights")
+    # 2) Black-Litterman adjusted MVO — same objective, personalised expected returns.
+    if strategy == "income":
+        yields = [float(a.get("income_yield_ann") or a.get("total_expected_return") or 0.04) for a in assets_list]
+        add_candidate("Black-Litterman Income MVO", mvo_income_constrained(mu_bl, sigma, yields, min_yield=0.035), mu_bl,
+                      "Uses the client's goal, currency, inflation, and sector views before applying income optimisation.")
+    elif strategy == "min_vol":
+        # Min-vol ignores mu, so BL version uses a mild max-sharpe challenger but remains constrained by caps/bounds.
+        add_candidate("Black-Litterman Defensive MVO", mvo_max_sharpe(mu_bl, sigma), mu_bl,
+                      "Tests whether client views can improve return without materially increasing risk.")
+    else:
+        add_candidate("Black-Litterman Max Sharpe", mvo_max_sharpe(mu_bl, sigma), mu_bl,
+                      "Blends market expectations with the client's stated views, then maximises risk-adjusted return.")
+
+    # 3) HRP robust diversification candidate.
+    add_candidate("Hierarchical Risk Parity", hrp_weights_from_covariance(sigma), mu_raw,
+                  "Clusters correlated assets and spreads risk across them for a more stable diversified portfolio.")
+
+    if not candidates:
+        print("[OPT] All optimisation candidates failed")
         return None, None, None, None
 
-    # Monte Carlo
-    mc = run_monte_carlo(weights, mu, sigma)
+    selected = choose_best_candidate(candidates, profile)
+    weights = selected["weights"]
+    mc = run_monte_carlo_goal(weights, selected["mu"], sigma, answers, sims=10000)
 
-    allocs  = apply_mvo_weights(assets_list, weights, cov_data)
-    rb      = build_risk_breakdown(allocs)
+    allocs = apply_mvo_weights(assets_list, weights, cov_data, profile, ctx)
+    rb = build_risk_breakdown(allocs)
 
-    cov     = fetch_covariance()
-    metrics = compute_portfolio_metrics(allocs, cov)
-    # Enrich metrics with MVO-derived numbers (more precise than heuristic)
-    metrics["expected_return"] = f"{mc['port_return']:.1f}%"
-    metrics["volatility"]      = f"{mc['port_vol']:.1f}%"
-    metrics["sharpe_ratio"]    = f"{mc['sharpe']:.2f}"
-    metrics["monte_carlo"]     = mc
-    metrics["mvo_strategy"]    = strategy
+    metrics = compute_portfolio_metrics(allocs, cov_data)
+    metrics["expected_return"] = f"{selected['return']*100:.1f}%"
+    metrics["volatility"] = f"{selected['vol']*100:.1f}%"
+    metrics["sharpe_ratio"] = f"{selected['sharpe']:.2f}"
+    metrics["monte_carlo"] = mc
+    metrics["mvo_strategy"] = strategy
+    metrics["optimization_method"] = selected["name"]
+    metrics["optimization_explanation"] = selected["description"]
+    metrics["candidate_portfolios"] = [{
+        "method": c["name"],
+        "expected_return": round(c["return"] * 100, 2),
+        "volatility": round(c["vol"] * 100, 2),
+        "sharpe": round(c["sharpe"], 3),
+        "diversification": round(c["diversification"], 1),
+        "selected": c is selected,
+    } for c in candidates]
+    metrics["optimizer_summary"] = (
+        f"Tested {len(candidates)} candidate portfolios using Dimension Depths return, volatility, covariance, "
+        f"income yield and classification data. Selected {selected['name']} because it best matched the "
+        f"{profile} profile's risk/return/diversification objective."
+    )
 
     return allocs, rb, metrics, weights
-
 
 def build_allocation(profile, answers):
     """Full pipeline: behavioral adjust → DD → confidence score."""
@@ -1024,6 +1705,54 @@ def build_allocation(profile, answers):
     confidence = compute_confidence_score(a, answers, behavioral_profile, behavioral_flags, corr_data)
 
     return a, b, m, behavioral_flags, behavioral_profile, confidence
+
+def build_asset_explanations(allocations):
+    """Structured asset-level explainability for dashboard cards and PDF expansion."""
+    explanations = []
+    for a in allocations or []:
+        cp = float(a.get("corr_penalty") or 0)
+        div_label = "High" if cp < 0.2 else ("Medium" if cp < 0.4 else "Low")
+        explanations.append({
+            "ticker": a.get("ticker", "—"),
+            "label": a.get("label", "Asset"),
+            "class": a.get("class", "Other"),
+            "weight": a.get("pct", 0),
+            "expected_return": a.get("expected_return"),
+            "volatility": a.get("volatility"),
+            "sharpe_ratio": a.get("sharpe_ratio"),
+            "diversification_contribution": div_label,
+            "reason": a.get("rationale") or "Improves portfolio fit and diversification.",
+        })
+    return explanations
+
+
+def class_plain_english(cls):
+    return {
+        "Cash": "Liquid, low-volatility instruments used for stability and near-term flexibility.",
+        "Fixed Income": "Bond-like instruments that support income and reduce overall volatility.",
+        "Equity": "Growth-oriented instruments with higher return potential and higher market fluctuation.",
+        "Real Estate": "Property-linked exposure that may support income and inflation resilience.",
+        "Alternatives": "Non-traditional exposure that can improve diversification.",
+        "Commodities": "Inflation-sensitive exposure that may behave differently from stocks and bonds.",
+    }.get(cls, "Diversifying exposure within the approved SOC asset universe.")
+
+
+def build_class_allocation(allocations):
+    """Super-class allocation summary for 'Where is my money going?' dashboard sections."""
+    totals = {}
+    for a in allocations or []:
+        cls = a.get("class", "Other")
+        totals[cls] = totals.get(cls, 0.0) + float(a.get("pct") or 0)
+    return [
+        {
+            "class": cls,
+            "pct": round(pct, 1),
+            "color": CLASS_COLORS.get(cls, "#6B7280"),
+            "plain_english": class_plain_english(cls),
+        }
+        for cls, pct in sorted(totals.items(), key=lambda x: -x[1])
+    ]
+
 
 # ── SYSTEM PROMPT ─────────────────────────────────────────────────────────────
 def system_prompt(answers, report):
@@ -1060,15 +1789,17 @@ def index(): return send_file("public/landing.html")
 def dashboard(): return send_file("public/index.html")
 
 @app.route("/questionnaire")
-def questionnaire_page(): return send_file("public/questionnaire.html")
+def questionnaire_page():
+    # The separate questionnaire page was removed from the UX.
+    # Users now complete the questionnaire inside the AI Chatbot tab.
+    return send_file("public/index.html")
 
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "status":"ok","service":"Barita Wealth Advisor",
         "dd_api":bool(DD_API_KEY),
-        "openai":bool(OPENAI_API_KEY),
-        "gemini":bool(GEMINI_API_KEY),
+        "ai_mode":"deterministic_templates",
     })
 
 @app.route("/analyse", methods=["POST"])
@@ -1081,31 +1812,21 @@ def analyse():
     allocations,risk_breakdown,metrics,behavioral_flags,behavioral_profile,confidence = build_allocation(profile, answers)
     name = f"{answers.get('first_name','')} {answers.get('last_name','')}".strip() or "Client"
 
-    advisory, ai_provider = "", "none"
-    try:
-        port_str   = ", ".join(f"{a['label']} {a['pct']}%" for a in allocations)
-        flag_notes = " ".join(v.get("note","") for v in behavioral_flags.values()
-                              if isinstance(v,dict) and v.get("detected"))
-        adv_prompt = (
-            f"Write a warm, friendly personalised advisory note (200-280 words, flowing paragraphs, no headers) for {name.split()[0]}, a {behavioral_profile} investor.\n"
-            f"Goal: {answers.get('primary_goal','')} | Withdrawals: {answers.get('withdrawal_time','')}\n"
-            f"Earns: {answers.get('earn_currency','')} | Spends: {answers.get('spend_currency','')}\n"
-            f"Debt: {answers.get('debt_situation','')} | Runway: {answers.get('income_loss_runway','')}\n"
-            f"Inflation: {answers.get('inflation_impact','')} | Pref: {answers.get('inflation_protection','')}\n"
-            f"Portfolio: {port_str}\n"
-            f"Return: {metrics['expected_return']} | Vol: {metrics['volatility']} | Sharpe: {metrics['sharpe_ratio']}\n"
-            f"Confidence score: {confidence['score']}/100 ({confidence['label']})\n"
-            f"Behavioral notes: {flag_notes or 'None detected'}\n\n"
-            f"Explain how their goal, currency, resilience, and inflation concern drove the weights. "
-            f"If behavioral adjustments were made, mention them warmly. Address {name.split()[0]} by first name. Be Jamaica-specific."
-        )
-        advisory, ai_provider = call_ai(
-            [{"role":"user","content":adv_prompt}],
-            max_tokens=700,
-            system="You are Barita, a warm friendly Jamaican investment advisor bear mascot for Barita Investments."
-        )
-    except Exception as e:
-        advisory = f"Portfolio built successfully. Advisory unavailable: {e}"
+    provisional_report = {
+        "profile": profile,
+        "behavioral_profile": behavioral_profile,
+        "allocations": allocations,
+        "risk_breakdown": risk_breakdown,
+        "class_allocation": build_class_allocation(allocations),
+        "metrics": metrics,
+        "monte_carlo": metrics.get("monte_carlo", {}),
+        "behavioral_flags": behavioral_flags,
+        "confidence": confidence,
+    }
+    advisory = generate_template_advisory_note(answers, provisional_report)
+    ai_provider = "deterministic_template"
+
+    explainability_summary = build_explainability_summary(answers, profile, behavioral_profile, behavioral_flags, metrics)
 
     result = {
         "profile":            profile,
@@ -1120,12 +1841,20 @@ def analyse():
         "mvo_strategy":       metrics.get("mvo_strategy", "score_based"),
         "behavioral_flags":   behavioral_flags,
         "confidence":         confidence,
+        "engine_explanation": explainability_summary,
+        "asset_explanations": build_asset_explanations(allocations),
+        "class_allocation":   build_class_allocation(allocations),
+        "optimizer_results":  metrics.get("candidate_portfolios", []),
+        "optimization_method": metrics.get("optimization_method", "score_based"),
+        "optimizer_summary":  metrics.get("optimizer_summary", ""),
         "advisory_note":      advisory,
         "ai_provider":        ai_provider,
         "client_name":        name,
     }
 
     try:
+        if db is None:
+            raise RuntimeError("Firestore not initialised")
         db.collection("sessions").document(user["uid"]).set({
             "answers":answers,"report":{k:v for k,v in result.items() if k!="allocations"},
             "allocations":allocations,"updated_at":firestore.SERVER_TIMESTAMP,
@@ -1154,116 +1883,204 @@ def chat():
         elif h.get("role")=="advisor" and h.get("text"): msgs.append({"role":"assistant","content":h["text"]})
     msgs.append({"role":"user","content":message})
 
-    reply, provider = call_ai(msgs, max_tokens=600, system=system_prompt(answers, report))
-    return jsonify({"reply":reply,"provider":provider})
+    groq_result = ask_groq(message, answers, report)
+
+    if groq_result and groq_result.get("raise_error"):
+        return jsonify({
+            "reply": groq_result["reply"],
+            "provider": "guardrail",
+            "raise_error": True
+        })
+
+    if groq_result and groq_result.get("reply"):
+        return jsonify({
+            "reply": groq_result["reply"],
+            "provider": "groq"
+        })
+
+    reply = generate_chat_reply(message, answers, report)
+
+    return jsonify({
+        "reply": reply,
+        "provider": "deterministic_template"
+    })
+
+
+# ── CHATBOT QUESTIONNAIRE ENGINE ──────────────────────────────────────────────
+# The questionnaire flow is deterministic so the demo never breaks if an AI
+# provider is unavailable. AI is used for portfolio commentary, not for deciding
+# which question comes next.
+QUESTIONNAIRE_FLOW = [
+    {"field":"first_name", "question":"What's your first name? I like to keep things personal! 🍯", "options":None},
+    {"field":"last_name", "question":"And your last name?", "options":None},
+    {"field":"age", "question":"How old are you? Just the number is fine!", "options":None},
+    {"field":"knowledge_level", "question":"How would you describe your investing experience?", "options":["I'm completely new to investing","I have basic knowledge but no real experience","I've been learning and have some experience","I have a lot of investing experience"]},
+    {"field":"primary_goal", "question":"What's your #1 financial goal right now?", "options":["Wealth accumulation / growth","Retirement planning","Education funding","Property purchase","Income generation","Capital preservation","Emergency fund building"]},
+    {"field":"time_horizon", "question":"How many years before you'd need to access this money? A rough estimate is perfect.", "options":None},
+    {"field":"target_amount", "question":"Do you have a specific money target in mind? For example, 'double my money', 'JMD 5 million', or 'not sure'.", "options":None},
+    {"field":"withdrawal_time", "question":"Over the next 2 years, how much of this portfolio might you need to withdraw?", "options":["No withdrawals","Less than 10%","10-25%","More than 25%"]},
+    {"field":"drop_reaction", "question":"If your portfolio dropped 20% in one month, what would you honestly do? 😬", "options":["Sell everything to avoid further losses","Sell some to reduce losses","Wait for recovery","Invest more at lower prices"]},
+    {"field":"risk_comfort", "question":"On a scale of 1–10, how much annual drawdown could you stomach before reconsidering your strategy? 1 means very little, 10 means big swings are okay.", "options":None},
+    {"field":"max_loss", "question":"What's the maximum annual loss you could handle without changing your plan?", "options":["Up to 10%","Up to 20%","Up to 40%","More than 40%"]},
+    {"field":"sector_view", "question":"Do you have a strong view that any sector will outperform? You can say something like 'tech', 'local JMD assets', or 'not sure'.", "options":None},
+    {"field":"income_loss_runway", "question":"If you lost your income tomorrow, how long could you live comfortably without touching investments?", "options":["Less than 3 months","3-6 months","6-12 months","1-2 years","More than 2 years"]},
+    {"field":"debt_situation", "question":"How would you describe your current debt situation?", "options":["Debt-free","Minor debt","Moderate debt","Significant debt"]},
+    {"field":"earn_currency", "question":"What currency do you mainly earn in?", "options":["JMD only","USD only","Mostly JMD","Mostly USD","Equal amounts of JMD and USD"]},
+    {"field":"spend_currency", "question":"What currency do you mainly spend in?", "options":["JMD only","USD only","Mostly JMD","Mostly USD","Equal amounts of JMD and USD"]},
+    {"field":"usd_liabilities", "question":"Do you have any USD-denominated debts or liabilities?", "options":["None","Under USD $10K","USD $10K-$50K","USD $50K-$200K","Over USD $200K"]},
+    {"field":"inflation_impact", "question":"How much does JMD inflation affect your daily costs?", "options":["Not sure","Minimal","Moderate","Significant","Severe"]},
+    {"field":"inflation_protection", "question":"Do you want inflation protection built into your portfolio?", "options":["Not sure","Not necessary","Somewhat","Yes - strong focus"]},
+    {"field":"invest_style", "question":"What's your preferred investing style?", "options":["Fully passive","Mostly passive","Balanced","Mostly active","Fully active"]},
+    {"field":"market_adjustment", "question":"If market conditions shifted, would you be open to adjusting your portfolio?", "options":["No - keep it fixed","Yes - small changes","Yes - moderate changes","Yes - fully active"]},
+    {"field":"risk_relationship", "question":"Which best describes your relationship with investment risk?", "options":["I worry a lot about losing money","I'm okay with small changes, but big losses stress me","I understand ups and downs and stay calm","I'm comfortable with big risks and see drops as opportunities"]},
+    {"field":"loss_vs_gain", "question":"Which outcome would upset you more?", "options":["Missing a 20% gain","Suffering a 20% loss"]},
+    {"field":"performance_benchmark", "question":"When checking your portfolio, what do you mainly compare it against?", "options":["The amount I originally invested","The overall increase in value (JMD gains)","My expected return","A market index","The rate of inflation"]},
+]
+
+
+def _normalise_choice(value, options):
+    """Return the exact option label when the user types a close/simple version."""
+    if not options:
+        return str(value or "").strip()
+    raw = str(value or "").strip()
+    raw_l = raw.lower()
+    for opt in options:
+        if raw_l == opt.lower():
+            return opt
+    for opt in options:
+        # Accept partial typed answers like "mostly jmd" or "debt free".
+        compact_raw = raw_l.replace("-", " ").replace("/", " ")
+        compact_opt = opt.lower().replace("-", " ").replace("/", " ")
+        if compact_raw and (compact_raw in compact_opt or compact_opt in compact_raw):
+            return opt
+    return raw
+
+
+def _next_unanswered_question(answers):
+    for q in QUESTIONNAIRE_FLOW:
+        val = answers.get(q["field"])
+        if val is None or str(val).strip() == "":
+            return q
+    return None
+
+
+def _feedback_for_answer(field, value, answers):
+    name = answers.get("first_name") or "friend"
+    v = str(value)
+    feedback = {
+        "first_name": f"Pawsome to meet you, {name}! 🐻✨ I’ll use your name so the advice feels personal, not generic.",
+        "last_name": "Got it — your report will feel more complete and professional with your full name.",
+        "age": "Perfect. Age helps me think about time horizon and how much market movement may be suitable.",
+        "knowledge_level": "That helps me match the explanation style to your experience level — no confusing jargon, promise.",
+        "primary_goal": "That goal is important because a growth goal and a preservation goal should not get the same portfolio.",
+        "time_horizon": "Great. Your time horizon tells me whether the portfolio can take short-term ups and downs or should stay steadier.",
+        "target_amount": "Noted. A target gives the Monte Carlo/growth projection something practical to measure against.",
+        "withdrawal_time": "Thanks. Liquidity matters because money you may need soon should not be placed in assets that swing too much.",
+        "drop_reaction": "Thank you for being honest. This tells me how you may behave when the market gets stressful, which is key for suitability.",
+        "risk_comfort": "Got it. That gives a more human measure of drawdown comfort beyond a simple Conservative/Moderate/Aggressive label.",
+        "max_loss": "That loss limit helps set the ceiling for how much volatility your portfolio should carry.",
+        "sector_view": "Nice. Your view can help shape the asset logic while still keeping the portfolio diversified.",
+        "income_loss_runway": "That safety-net answer matters a lot — if your runway is short, the portfolio should protect you from being forced to sell.",
+        "debt_situation": "Thank you. Debt affects how much investment risk is reasonable in real life.",
+        "earn_currency": "Currency exposure matters in Jamaica because JMD and USD needs can change what assets fit best.",
+        "spend_currency": "That helps me match the portfolio to the currency you actually use day to day.",
+        "usd_liabilities": "Important. USD obligations may call for more USD-aware exposure so the portfolio better matches your liabilities.",
+        "inflation_impact": "Inflation pressure matters because rising costs can quietly reduce purchasing power.",
+        "inflation_protection": "Got it. This helps decide whether assets like real estate, commodities, or equities deserve more attention.",
+        "invest_style": "That style preference helps me decide whether the portfolio should be more hands-off or more actively adjusted.",
+        "market_adjustment": "Good to know. Rebalancing flexibility helps the portfolio adapt when market conditions shift.",
+        "risk_relationship": "That tells me your emotional comfort with risk, not just your numerical tolerance.",
+        "loss_vs_gain": "This helps detect loss aversion — many investors feel losses more strongly than gains.",
+        "performance_benchmark": "That benchmark tells me how you judge success, which affects how the advice should be explained.",
+    }
+    return feedback.get(field, f"Got it, {name}. That answer helps me make the portfolio more personalised.")
+
 
 @app.route("/chat_questionnaire", methods=["POST"])
 def chat_questionnaire():
-    """
-    Interactive questionnaire chat endpoint.
-    The bear advisor conducts the questionnaire conversationally,
-    one question at a time, extracting answers from natural language.
-    """
-    user,err = verify_token(request)
-    if err: return jsonify({"error":err}),401
+    """Deterministic Barita Bear questionnaire chatbot, one question at a time."""
+    user, err = verify_token(request)
+    if err:
+        return jsonify({"error": err}), 401
 
-    data        = request.get_json()
-    user_message= data.get("message","")
-    history     = data.get("history",[])
-    answers_so_far = data.get("answers",{})
-    stage       = data.get("stage","intro")  # intro | questionnaire | complete
+    data = request.get_json() or {}
+    user_message = str(data.get("message", "")).strip()
+    answers = dict(data.get("answers", {}) or {})
+    stage = data.get("stage", "intro")
 
-    system = """You are Barita 🐻, a charming, encouraging bear wearing a business vest — Barita Investments' friendly AI advisor.
-You guide investors through a questionnaire in a warm, conversational, game-tutorial style.
-One question per message. Be enthusiastic. Use simple language. Make the investor feel safe and excited.
-Light bear puns welcome: "pawsome!", "bear with me!", "I'm rooting for you!", "honey, that's a great answer!"
+    # Intro call: ask the first unanswered question, no extraction yet.
+    if stage == "intro" or not user_message:
+        q = _next_unanswered_question(answers)
+        if not q:
+            parsed = {
+                "message": "🎉 Pawsome — I already have everything I need. Let’s build your personalised portfolio now!",
+                "extracted_answer": {},
+                "options": None,
+                "stage": "complete",
+                "next_field": None,
+                "progress": 100,
+            }
+            return jsonify({"raw": json.dumps(parsed), "parsed": parsed, "provider": "deterministic"})
+        parsed = {
+            "message": "🐻 Pawsome to meet you! I'm Barita, your friendly investment advisor bear from Barita Investments! 🎉\n\nI’ll guide you one question at a time and give feedback after each answer. Ready? " + q["question"],
+            "extracted_answer": {},
+            "options": q.get("options"),
+            "stage": "questionnaire",
+            "next_field": q["field"],
+            "progress": round(len([x for x in QUESTIONNAIRE_FLOW if answers.get(x["field"])]) / len(QUESTIONNAIRE_FLOW) * 100),
+        }
+        return jsonify({"raw": json.dumps(parsed), "parsed": parsed, "provider": "deterministic"})
 
-IMPORTANT: Always respond with ONLY valid JSON (no markdown, no extra text):
-{
-  "message": "Your warm response + the next single question (with answer options if applicable)",
-  "extracted_answer": {"field_name": "value"} or {},
-  "options": ["Option A", "Option B"] or null (for multiple-choice questions),
-  "stage": "questionnaire" or "complete",
-  "next_field": "field_name or null"
-}
+    current_q = _next_unanswered_question(answers)
+    extracted = {}
 
-QUESTIONS (ask in order, skip already-answered ones from the context):
-1. first_name — "What's your first name? I like to keep things personal! 🍯"
-2. last_name — "And your last name?"
-3. age — "How old are you? (Just the number is fine!)"
-4. knowledge_level — "How would you describe your investing experience?" 
-   options: ["I'm completely new to investing","I have basic knowledge but no real experience","I've been learning and have some experience","I have a lot of investing experience"]
-5. primary_goal — "What's your #1 financial goal right now?"
-   options: ["Wealth accumulation / growth","Retirement planning","Education funding","Property purchase","Income generation","Capital preservation","Emergency fund building"]
-6. time_horizon — "How many years before you'd need to access this money? Just a rough estimate!"
-   (store as text e.g. "5 years", "10+ years")
-7. target_amount — "Do you have a specific dollar target in mind? E.g. 'double my money' or 'JMD 5 million' — or just say 'not sure'!"
-   (store as text, open-ended)
-8. withdrawal_time — "Over the NEXT 2 years, how much of the portfolio might you need to withdraw?"
-   options: ["No withdrawals","Less than 10%","10-25%","More than 25%"]
-9. drop_reaction — "If your portfolio dropped 20% in one month, what would you do? 😬"
-   options: ["Sell everything to avoid further losses","Sell some to reduce losses","Wait for recovery","Invest more at lower prices"]
-10. risk_comfort — "On a scale of 1–10, how much annual drawdown could you stomach before reconsidering your strategy? (1=very little, 10=totally fine with big swings)"
-    (store as number string e.g. "6")
-11. max_loss — "What's the MAXIMUM annual loss you could handle without changing plans?"
-    options: ["Up to 10%","Up to 20%","Up to 40%","More than 40%"]
-12. sector_view — "Do you have a strong view that any sector will outperform? E.g. 'I think tech will boom' or 'I trust local JMD assets' — totally optional!"
-    (open-ended — feeds Black-Litterman views)
-13. income_loss_runway — "If you lost your income tomorrow, how long could you live comfortably WITHOUT touching investments?"
-    options: ["Less than 3 months","3-6 months","6-12 months","1-2 years","More than 2 years"]
-14. debt_situation — "How would you describe your current debt situation?"
-    options: ["Debt-free","Minor debt","Moderate debt","Significant debt"]
-15. earn_currency — "What currency do you mainly earn in?"
-    options: ["JMD only","USD only","Mostly JMD","Mostly USD","Equal amounts of JMD and USD"]
-16. spend_currency — "What currency do you mainly spend in?"
-    options: ["JMD only","USD only","Mostly JMD","Mostly USD","Equal amounts of JMD and USD"]
-17. usd_liabilities — "Do you have any USD-denominated debts or liabilities?"
-    options: ["None","Under USD $10K","USD $10K-$50K","USD $50K-$200K","Over USD $200K"]
-18. inflation_impact — "How much does JMD inflation affect your daily costs?"
-    options: ["Not sure","Minimal","Moderate","Significant","Severe"]
-19. inflation_protection — "Do you want inflation protection built into your portfolio?"
-    options: ["Not sure","Not necessary","Somewhat","Yes - strong focus"]
-20. invest_style — "What's your preferred investing style?"
-    options: ["Fully passive","Mostly passive","Balanced","Mostly active","Fully active"]
-21. market_adjustment — "If market conditions shifted, would you be open to adjusting your portfolio?"
-    options: ["No - keep it fixed","Yes - small changes","Yes - moderate changes","Yes - fully active"]
-22. risk_relationship — "Which best describes your relationship with investment risk?"
-    options: ["I worry a lot about losing money","I'm okay with small changes, but big losses stress me","I understand ups and downs and stay calm","I'm comfortable with big risks and see drops as opportunities"]
-23. loss_vs_gain — "Which outcome would upset you MORE?"
-    options: ["Missing a 20% gain","Suffering a 20% loss"]
-24. performance_benchmark — "When checking your portfolio, what do you mainly compare it against?"
-    options: ["The amount I originally invested","The overall increase in value (JMD gains)","My expected return","A market index","The rate of inflation"]
+    if current_q:
+        field = current_q["field"]
+        value = _normalise_choice(user_message, current_q.get("options"))
 
-When ALL 24 fields are present in the answers context, set stage="complete" and give an excited closing message. Tell them you're building their portfolio now!"""
+        # If the user enters a full name for first name, split it nicely.
+        if field == "first_name" and len(value.split()) >= 2 and not answers.get("last_name"):
+            parts = value.split()
+            extracted["first_name"] = parts[0]
+            extracted["last_name"] = " ".join(parts[1:])
+        else:
+            extracted[field] = value
+        answers.update(extracted)
 
-    msgs = []
-    for h in history[-12:]:
-        if h.get("role")=="user": msgs.append({"role":"user","content":h["text"]})
-        elif h.get("role")=="bear" and h.get("text"): msgs.append({"role":"assistant","content":h["text"]})
+    next_q = _next_unanswered_question(answers)
+    completed_count = len([q for q in QUESTIONNAIRE_FLOW if answers.get(q["field"])])
+    progress = round(completed_count / len(QUESTIONNAIRE_FLOW) * 100)
 
-    if not msgs and not user_message:
-        # Opening message
-        intro_msg = '{"message":"🐻 Pawsome to meet you! I\'m Barita, your friendly investment advisor bear from Barita Investments! 🎉\\n\\nI\'m going to guide you through building your very own personalised portfolio — step by step, question by question. Think of it like a game tutorial! No jargon, I promise. 🍯\\n\\nReady to start? First things first — **what\'s your first name?**", "extracted_answer": {}, "options": null, "stage": "questionnaire", "next_field": "first_name"}'
-        return jsonify({"raw": intro_msg, "parsed": json.loads(intro_msg)})
+    if not next_q:
+        last_field = list(extracted.keys())[0] if extracted else None
+        last_value = extracted.get(last_field, user_message) if last_field else user_message
+        feedback = _feedback_for_answer(last_field, last_value, answers) if last_field else "Beautiful — your profile is complete."
+        parsed = {
+            "message": f"{feedback}\n\n🎉 Pawsome! Your investor profile is complete. I’m ready to build your personalised Barita portfolio now.",
+            "extracted_answer": extracted,
+            "options": None,
+            "stage": "complete",
+            "next_field": None,
+            "progress": 100,
+        }
+        return jsonify({"raw": json.dumps(parsed), "parsed": parsed, "provider": "deterministic"})
 
-    msgs.append({"role":"user","content":user_message})
+    # Build a short, personalised feedback + next question.
+    last_field = list(extracted.keys())[0] if extracted else None
+    last_value = extracted.get(last_field, user_message) if last_field else user_message
+    feedback = _feedback_for_answer(last_field, last_value, answers) if last_field else "Got it — thanks for sharing that."
+    message = f"{feedback}\n\nNext question: {next_q['question']}"
 
-    context = f"\nAnswers collected so far: {json.dumps(answers_so_far)}\nCurrent stage: {stage}"
-    msgs.insert(0,{"role":"user","content":context})
+    parsed = {
+        "message": message,
+        "extracted_answer": extracted,
+        "options": next_q.get("options"),
+        "stage": "questionnaire",
+        "next_field": next_q["field"],
+        "progress": progress,
+    }
+    return jsonify({"raw": json.dumps(parsed), "parsed": parsed, "provider": "deterministic"})
 
-    raw, provider = call_ai(msgs, max_tokens=500, system=system)
-
-    # Parse JSON response
-    try:
-        # Strip markdown code blocks if present
-        clean = raw.strip()
-        if clean.startswith("```"): clean = clean.split("```")[1]
-        if clean.startswith("json"): clean = clean[4:]
-        parsed = json.loads(clean.strip())
-    except Exception:
-        parsed = {"message": raw, "extracted_answer": {}, "stage": stage, "next_field": None}
-
-    return jsonify({"raw": raw, "parsed": parsed, "provider": provider})
 
 @app.route("/generate_report", methods=["POST"])
 def generate_report():
@@ -1335,6 +2152,19 @@ def build_pdf(user_info, answers, report):
     mt=Table([["Expected Return","Annualised Volatility","Sharpe Ratio"],[metrics.get("expected_return","—"),metrics.get("volatility","—"),metrics.get("sharpe_ratio","—")]],colWidths=["33%","33%","34%"])
     mt.setStyle(TableStyle([("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,0),9),("FONTSIZE",(0,1),(-1,1),18),("FONTNAME",(0,1),(-1,1),"Helvetica-Bold"),("TEXTCOLOR",(0,0),(-1,0),MUTED),("TEXTCOLOR",(0,1),(0,1),GREEN),("TEXTCOLOR",(1,1),(1,1),RED),("TEXTCOLOR",(2,1),(2,1),TEAL),("BACKGROUND",(0,0),(-1,-1),LIGHT),("ALIGN",(0,0),(-1,-1),"CENTER"),("VALIGN",(0,0),(-1,-1),"MIDDLE"),("PADDING",(0,0),(-1,-1),12),("GRID",(0,0),(-1,-1),0.5,BORD)]))
     story+=[mt,Spacer(1,12)]
+
+    # Optimisation explanation
+    if metrics.get("optimization_method") or metrics.get("optimizer_summary"):
+        story.append(Paragraph("Optimisation Method",h2))
+        opt_rows = [["Selected Method", metrics.get("optimization_method","—")],
+                    ["Strategy", metrics.get("mvo_strategy","—")],
+                    ["Monte Carlo", metrics.get("monte_carlo",{}).get("method_note","—")],
+                    ["Goal Probability", f"{metrics.get('monte_carlo',{}).get('prob_goal','—')}%"]]
+        ot=Table(opt_rows,colWidths=["30%","70%"])
+        ot.setStyle(TableStyle([("FONTNAME",(0,0),(0,-1),"Helvetica-Bold"),("FONTSIZE",(0,0),(-1,-1),9),("TEXTCOLOR",(0,0),(0,-1),MUTED),("ROWBACKGROUNDS",(0,0),(-1,-1),[LIGHT,colors.white]),("PADDING",(0,0),(-1,-1),8),("GRID",(0,0),(-1,-1),0.5,BORD)]))
+        story += [ot, Spacer(1,6)]
+        story.append(Paragraph(metrics.get("optimizer_summary", metrics.get("optimization_explanation", "")), sm))
+        story.append(Spacer(1,12))
 
     # Allocation
     story.append(Paragraph("Asset Allocation",h2))

@@ -11,5 +11,9 @@ services:
         sync: false          # set manually in Render dashboard
       - key: DIMENSION_DEPTHS_BASE_URL
         sync: false
+      - key: DIMENSION_DEPTHS_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
     healthCheckPath: /health
 
